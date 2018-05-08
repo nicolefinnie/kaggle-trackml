@@ -1,3 +1,12 @@
+# ignore train/test data
+input/*
+
+# ignore swap data, IDE, submission
+*~
+.vscode
+*.csv
+*.csv.gz
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
