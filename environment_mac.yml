@@ -55,12 +55,14 @@ dependencies:
   - readline=7.0
   - scikit-learn=0.19.1
   - scipy=1.0.1
+  - seaborn=
   - setuptools=39.1.0
   - sip=4.19.8
   - six=1.11.0
   - sqlite=3.23.1
   - tk=8.6.7
   - tornado=5.0.2
+  - tqdm=
   - wheel=0.31.0
   - wrapt=1.10.11
   - xz=5.2.3
