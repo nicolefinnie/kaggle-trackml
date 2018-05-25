@@ -73,8 +73,57 @@ hits.head()
 model = Clusterer(rz_scales=RZ_SCALES)
 labels = model.predict(hits)
 
+print(len(labels))
+print(labels.shape)
 print(labels)
+count0 = np.count_nonzero(labels == 0)
+count1 = np.count_nonzero(labels == 1)
+count2 = np.count_nonzero(labels == 2)
+#print(count0)
+#print(count1)
+#print(count2)
+max_track = np.amax(labels)
+for i in range(0,max_track+1):
+    hit_count = np.count_nonzero(labels == i)
+    if hit_count < 5:
+        labels[labels == i] = 0
+        #print('track i: ' + str(i) + ' has a hit count of: ' + str(hit_count))
 
+def renumber_labels(labels):
+    new_label = 0
+    for old_label in np.unique(labels):
+        if not old_label == new_label:
+            labels[labels == old_label] = new_label
+        new_label += 1
+
+    return labels
+
+labels = renumber_labels(labels)
+
+print('truth')
+print(truth.shape)
+#print(truth.head)
+truth_tracks = truth['particle_id'].values
+total_tracks = len(np.unique(truth_tracks))
+print('total truth tracks: ' + str(total_tracks))
+print('predicted tracks: ' + str(max_track))
+
+def matches_first_hits(labels, track, truth):
+    match_found = False
+    all_indices = np.where(labels == track)[0]
+    # FIXME: Need to sort on z-value, and then see if first 'n' (3) particle_ids match
+    if truth.iloc[all_indices[0]]['particle_id'] == truth.iloc[all_indices[1]]['particle_id']:
+        if truth.iloc[all_indices[1]]['particle_id'] == truth.iloc[all_indices[2]]['particle_id']:
+            match_found = True
+    return match_found
+
+max_track = np.amax(labels)
+count = 0
+for i in range(1,max_track+1):
+    found_it = matches_first_hits(labels, i, truth)
+    if found_it and count < 5:
+        print('matched track i: ' + str(i))
+        count = count + 1
 
 submission = create_one_event_submission(0, hits, labels)
 score = score_event(truth, submission)
@@ -85,7 +134,8 @@ dataset_submissions = []
 dataset_scores = []
 
 
-for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=10, nevents=10):
+nevents = 0 # 10
+for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=10, nevents=nevents):
         
     # Track pattern recognition
     model = Clusterer(rz_scales=RZ_SCALES)
@@ -101,7 +151,8 @@ for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=
     
     print("Score for event %d: %.3f" % (event_id, score))
     
-print('Mean score: %.3f' % (np.mean(dataset_scores)))
+if nevents > 0:
+    print('Mean score: %.3f' % (np.mean(dataset_scores)))
 
 
 path_to_test = "../input/test"
