@@ -139,8 +139,8 @@ class Clusterer(object):
         dfh['r2'] = np.sqrt(dfh.x**2+dfh.y**2)
         dfh['z1'] = dfh['z']/dfh['rt']        
         dz = 0.00012
-        stepdz = 0.00001
-        for ii in tqdm(range(12)):
+        stepdz = 0.000005
+        for ii in tqdm(range(24)):
             dz = dz + ii*stepdz
             dfh['a1'] = dfh['a0']+dz*dfh['z']*np.sign(dfh['z'].values)
             dfh['x1'] = dfh['a1']/dfh['z1']
@@ -148,7 +148,7 @@ class Clusterer(object):
             dfh['x3'] = dfh['x1']+dfh['x2']
             ss = StandardScaler()
             dfs = ss.fit_transform(dfh[['a1','z1','x1','x2','x3']].values)
-            self.clusters = DBSCAN(eps=0.0033,min_samples=1,metric='euclidean').fit(dfs).labels_
+            self.clusters = DBSCAN(eps=0.0035-dz,min_samples=1,metric='euclidean').fit(dfs).labels_
             if ii==0:
                 dfh['s1']=self.clusters
                 dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
@@ -164,8 +164,8 @@ class Clusterer(object):
                 self.clusters = dfh['s1'].values
                 dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
         dz = 0.00012
-        stepdz = -0.00001
-        for ii in tqdm(range(12)):
+        stepdz = -0.000005
+        for ii in tqdm(range(24)):
             dz = dz + ii*stepdz
             dfh['a1'] = dfh['a0']+dz*dfh['z']*np.sign(dfh['z'].values)
             dfh['x1'] = dfh['a1']/dfh['z1']
@@ -173,7 +173,7 @@ class Clusterer(object):
             dfh['x3'] = dfh['x1']+dfh['x2']
             ss = StandardScaler()
             dfs = ss.fit_transform(dfh[['a1','z1','x1','x2','x3']].values)
-            self.clusters = DBSCAN(eps=0.0033,min_samples=1,metric='euclidean').fit(dfs).labels_
+            self.clusters = DBSCAN(eps=0.0035+dz,min_samples=1,metric='euclidean').fit(dfs).labels_
             dfh['s2'] = self.clusters
             dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
             maxs1 = dfh['s1'].max()
