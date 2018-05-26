@@ -81,19 +81,22 @@ class Clusterer(object):
     
     def _eliminate_outliers(self,labels,M):
         norms=np.zeros((len(labels)),np.float32)
+        indices=np.zeros((len(labels)),np.float32)
         for i, cluster in tqdm(enumerate(labels),total=len(labels)):
             if cluster == 0:
                 continue
             index = np.argwhere(self.clusters==cluster)
             index = np.reshape(index,(index.shape[0]))
-            if len(index)>20 or len(index)<7:
-                self.clusters[self.clusters==cluster]=0
+            indices[i] = len(index)
             x = M[index]
             norms[i] = self._test_quadric(x)
-        threshold = np.percentile(norms,90)*5
+        threshold1 = np.percentile(norms,90)*5
+        threshold2 = 20
+        threshold3 = 7
         for i, cluster in enumerate(labels):
-            if norms[i] > threshold:
-                self.clusters[self.clusters==cluster]=0            
+            if norms[i] > threshold1 or indices[i] > threshold2 or indices[i] < threshold3:
+                self.clusters[self.clusters==cluster]=0  
+
     def _test_quadric(self,x):
         Z = np.zeros((x.shape[0],10), np.float32)
         Z[:,0] = x[:,0]**2
@@ -140,7 +143,8 @@ class Clusterer(object):
         dfh['z1'] = dfh['z']/dfh['rt']        
         dz = 0.00012
         stepdz = 0.000005
-        for ii in tqdm(range(24)):
+        steps = 35
+        for ii in tqdm(range(steps)):
             dz = dz + ii*stepdz
             dfh['a1'] = dfh['a0']+dz*dfh['z']*np.sign(dfh['z'].values)
             dfh['x1'] = dfh['a1']/dfh['z1']
@@ -148,6 +152,7 @@ class Clusterer(object):
             dfh['x3'] = dfh['x1']+dfh['x2']
             ss = StandardScaler()
             dfs = ss.fit_transform(dfh[['a1','z1','x1','x2','x3']].values)
+      
             self.clusters = DBSCAN(eps=0.0033-dz,min_samples=1,metric='euclidean').fit(dfs).labels_
             if ii==0:
                 dfh['s1']=self.clusters
@@ -165,7 +170,7 @@ class Clusterer(object):
                 dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
         dz = 0.00012
         stepdz = -0.000005
-        for ii in tqdm(range(24)):
+        for ii in tqdm(range(steps)):
             dz = dz + ii*stepdz
             dfh['a1'] = dfh['a0']+dz*dfh['z']*np.sign(dfh['z'].values)
             dfh['x1'] = dfh['a1']/dfh['z1']
@@ -173,6 +178,7 @@ class Clusterer(object):
             dfh['x3'] = dfh['x1']+dfh['x2']
             ss = StandardScaler()
             dfs = ss.fit_transform(dfh[['a1','z1','x1','x2','x3']].values)
+       
             self.clusters = DBSCAN(eps=0.0033+dz,min_samples=1,metric='euclidean').fit(dfs).labels_
             dfh['s2'] = self.clusters
             dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
@@ -209,7 +215,7 @@ def create_one_event_submission(event_id, hits, labels):
 dataset_submissions = []
 dataset_scores = []
 
-for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=0, nevents=5):
+for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=15, nevents=5):
     # Track pattern recognition
     model = Clusterer()
     labels = model.predict(hits)
