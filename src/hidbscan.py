@@ -111,19 +111,26 @@ print('predicted tracks: ' + str(max_track))
 def matches_first_hits(labels, track, truth):
     match_found = False
     all_indices = np.where(labels == track)[0]
-    # FIXME: Need to sort on z-value, and then see if first 'n' (3) particle_ids match
-    if truth.iloc[all_indices[0]]['particle_id'] == truth.iloc[all_indices[1]]['particle_id']:
-        if truth.iloc[all_indices[1]]['particle_id'] == truth.iloc[all_indices[2]]['particle_id']:
-            match_found = True
+    truth_for_track = truth.iloc[all_indices,:]
+    sorted_truth = truth_for_track.sort_values('tz_abs')
+    particles = sorted_truth['particle_id'].values
+    if (particles[0] == particles[1]) and (particles[1] == particles[2]):
+        match_found = True
     return match_found
 
 max_track = np.amax(labels)
 count = 0
+truth['tz_abs'] = truth['tz'].abs()
 for i in range(1,max_track+1):
     found_it = matches_first_hits(labels, i, truth)
-    if found_it and count < 5:
-        print('matched track i: ' + str(i))
+    if found_it:
         count = count + 1
+    #if found_it and count < 5:
+    #    print('matched track i: ' + str(i))
+    #    count = count + 1
+    #    break
+
+print('Found seeds: ' + str(count))
 
 submission = create_one_event_submission(0, hits, labels)
 score = score_event(truth, submission)
