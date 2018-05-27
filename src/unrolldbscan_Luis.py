@@ -141,8 +141,8 @@ class Clusterer(object):
         dfh['a0'] = np.arctan2(dfh.y,dfh.x)
         dfh['r2'] = np.sqrt(dfh.x**2+dfh.y**2)
         dfh['z1'] = dfh['z']/dfh['rt']        
-        dz = 0.00012
-        stepdz = 0.000005
+        dz = 0.000015
+        stepdz = 0.0000025
         steps = 35
         for ii in tqdm(range(steps)):
             dz = dz + ii*stepdz
@@ -153,7 +153,7 @@ class Clusterer(object):
             ss = StandardScaler()
             dfs = ss.fit_transform(dfh[['a1','z1','x1','x2','x3']].values)
       
-            self.clusters = DBSCAN(eps=0.0033-dz,min_samples=1,metric='euclidean').fit(dfs).labels_
+            self.clusters = DBSCAN(eps=0.0033-dz,min_samples=1,metric='euclidean', n_jobs=8).fit(dfs).labels_
             if ii==0:
                 dfh['s1']=self.clusters
                 dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
@@ -168,8 +168,8 @@ class Clusterer(object):
                 dfh['s1'] = dfh['s1'].astype('int64')
                 self.clusters = dfh['s1'].values
                 dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-        dz = 0.00012
-        stepdz = -0.000005
+        dz = 0.000015
+        stepdz = -0.0000025
         for ii in tqdm(range(steps)):
             dz = dz + ii*stepdz
             dfh['a1'] = dfh['a0']+dz*dfh['z']*np.sign(dfh['z'].values)
@@ -179,7 +179,7 @@ class Clusterer(object):
             ss = StandardScaler()
             dfs = ss.fit_transform(dfh[['a1','z1','x1','x2','x3']].values)
        
-            self.clusters = DBSCAN(eps=0.0033+dz,min_samples=1,metric='euclidean').fit(dfs).labels_
+            self.clusters = DBSCAN(eps=0.0033+dz,min_samples=1,metric='euclidean', n_jobs=8).fit(dfs).labels_
             dfh['s2'] = self.clusters
             dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
             maxs1 = dfh['s1'].max()
@@ -193,7 +193,7 @@ class Clusterer(object):
     def predict(self, hits): 
         self.clusters = self._init(hits)        
         X = self._preprocess(hits) 
-        
+               
         cl = hdbscan.HDBSCAN(min_samples=1,min_cluster_size=7,
                              metric='braycurtis',cluster_selection_method='leaf',algorithm='best', leaf_size=50)
         
@@ -215,7 +215,7 @@ def create_one_event_submission(event_id, hits, labels):
 dataset_submissions = []
 dataset_scores = []
 
-for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=15, nevents=5):
+for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=0, nevents=5):
     # Track pattern recognition
     model = Clusterer()
     labels = model.predict(hits)
@@ -236,7 +236,7 @@ print('Mean score: %.8f' % (np.mean(dataset_scores)))
 path_to_test = "../input/test"
 test_dataset_submissions = []
 
-create_submission = False # True for submission 
+create_submission = True # True for submission 
 if create_submission:
     for event_id, hits, cells in load_dataset(path_to_test, parts=['hits', 'cells']):
 
