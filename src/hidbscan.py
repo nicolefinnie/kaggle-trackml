@@ -10,6 +10,7 @@ from sklearn.preprocessing import StandardScaler
 #from sklearn.cluster import DBSCAN
 import hdbscan
 from sklearn.neighbors import NearestNeighbors
+import seeds as sd
 
 RZ_SCALES = [0.65, 0.965, 1.418] #1.41
 LEAF_SIZE = 50
@@ -100,37 +101,16 @@ def renumber_labels(labels):
 
 labels = renumber_labels(labels)
 
-print('truth')
-print(truth.shape)
+print('truth shape: ' + str(truth.shape))
+#print(truth.shape)
 #print(truth.head)
-truth_tracks = truth['particle_id'].values
-total_tracks = len(np.unique(truth_tracks))
-print('total truth tracks: ' + str(total_tracks))
-print('predicted tracks: ' + str(max_track))
 
-def matches_first_hits(labels, track, truth):
-    match_found = False
-    all_indices = np.where(labels == track)[0]
-    truth_for_track = truth.iloc[all_indices,:]
-    sorted_truth = truth_for_track.sort_values('tz_abs')
-    particles = sorted_truth['particle_id'].values
-    if (particles[0] == particles[1]) and (particles[1] == particles[2]):
-        match_found = True
-    return match_found
+_ = sd.count_truth_track_seed_hits(labels, truth, print_results=True)
 
-max_track = np.amax(labels)
-count = 0
-truth['tz_abs'] = truth['tz'].abs()
-for i in range(1,max_track+1):
-    found_it = matches_first_hits(labels, i, truth)
-    if found_it:
-        count = count + 1
-    #if found_it and count < 5:
-    #    print('matched track i: ' + str(i))
-    #    count = count + 1
-    #    break
+seeds = sd.find_first_seeds(labels, 5, hits)
+print(seeds)
 
-print('Found seeds: ' + str(count))
+count = sd.count_truth_track_seed_hits(seeds, truth, print_results=True)
 
 submission = create_one_event_submission(0, hits, labels)
 score = score_event(truth, submission)
