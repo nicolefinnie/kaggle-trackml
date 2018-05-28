@@ -76,7 +76,7 @@ from tqdm import tqdm
 from sklearn.cluster import DBSCAN
 
 class Clusterer(object):
-    def __init__(self,rz_scales=[0.69, 0.965, 1.528]):                        
+    def __init__(self,rz_scales=[0.4, 1.6, 1.0]):                        
         self.rz_scales=rz_scales
     
     def _eliminate_outliers(self,labels,M):
@@ -91,7 +91,7 @@ class Clusterer(object):
             x = M[index]
             norms[i] = self._test_quadric(x)
         threshold1 = np.percentile(norms,90)*5
-        threshold2 = 20
+        threshold2 = 25
         threshold3 = 7
         for i, cluster in enumerate(labels):
             if norms[i] > threshold1 or indices[i] > threshold2 or indices[i] < threshold3:
@@ -195,7 +195,7 @@ class Clusterer(object):
         X = self._preprocess(hits) 
                
         cl = hdbscan.HDBSCAN(min_samples=1,min_cluster_size=7,
-                             metric='braycurtis',cluster_selection_method='leaf',algorithm='best', leaf_size=50)
+                             metric='braycurtis',cluster_selection_method='leaf',algorithm='best', leaf_size=50, approx_min_span_tree=False)
         
         labels = np.unique(self.clusters)
         n_labels = 0
@@ -236,7 +236,7 @@ print('Mean score: %.8f' % (np.mean(dataset_scores)))
 path_to_test = "../input/test"
 test_dataset_submissions = []
 
-create_submission = True # True for submission 
+create_submission = False # True for submission 
 if create_submission:
     for event_id, hits, cells in load_dataset(path_to_test, parts=['hits', 'cells']):
 
