@@ -72,7 +72,14 @@ df = truth
 df['momentum'] = np.sqrt(df.px**2 + df.py**2 + df.pz**2)
 df.loc[df.particle_id==0,'momentum']=0
 
-def unroll_helixes(df, append_df, x_factor, y_factor, plot_it=False):
+#count = 0
+#for _, single_hit in hits.iterrows():
+#    if count < 10:
+#        x = single_hit.x
+#        count = count + 1
+#        print(x)
+
+def unroll_helixes(df, append_df, x_factor, y_factor, plot_it=False, print_it=False):
     particle_ids = list(df.particle_id.unique())
     num_particle_ids = len(particle_ids)
 
@@ -81,6 +88,7 @@ def unroll_helixes(df, append_df, x_factor, y_factor, plot_it=False):
         ax1 = fig1.add_subplot(122, projection='3d')
         ax2 = fig1.add_subplot(121, projection='3d')
 
+    count = 0
     for j in range(num_particle_ids):
         #print(particle_ids[j])
         dfslice = df.loc[df.particle_id==particle_ids[j]].copy(deep=True)
@@ -103,6 +111,11 @@ def unroll_helixes(df, append_df, x_factor, y_factor, plot_it=False):
         dfslice['hx'] = hxse.values
         dfslice['hy'] = hyse.values
         dfslice['hz'] = hzse.values
+        if print_it and count < 5:
+            print(x)
+            print(y)
+            print(z)
+            count = count + 1
         append_df = append_df.append(dfslice, ignore_index = True)
 
         if plot_it:
@@ -124,7 +137,7 @@ dfpxny = df[(df.x>0) & (df.y<0) & (df.momentum>1) & (df.momentum<1.2)]
 dfnxpy = df[(df.x<0) & (df.y>0) & (df.momentum>1) & (df.momentum<1.2)]
 dfnxny = df[(df.x<0) & (df.y<0) & (df.momentum>1) & (df.momentum<1.2)]
 
-append_df = unroll_helixes(dfpxpy, append_df, 1, 1, plot_it=False)
+append_df = unroll_helixes(dfpxpy, append_df, 1, 1, plot_it=False, print_it=True)
 append_df = unroll_helixes(dfpxny, append_df, 1, -1, plot_it=False)
 append_df = unroll_helixes(dfnxpy, append_df, -1, 1, plot_it=False)
 append_df = unroll_helixes(dfnxny, append_df, -1, -1, plot_it=False)
