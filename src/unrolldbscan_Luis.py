@@ -57,6 +57,8 @@ import os
 
 from trackml.dataset import load_event, load_dataset
 from trackml.score import score_event
+import multiprocessing as mp
+import threading as thr
 
 
 # Change this according to your directory preferred setting
@@ -76,7 +78,7 @@ from tqdm import tqdm
 from sklearn.cluster import DBSCAN
 
 class Clusterer(object):
-    def __init__(self,rz_scales=[0.4, 1.6, 1.0]):                        
+    def __init__(self,rz_scales=[0.4, 1.6, 0.5]):                        
         self.rz_scales=rz_scales
     
     def _eliminate_outliers(self,labels,M):
@@ -142,8 +144,8 @@ class Clusterer(object):
         dfh['r2'] = np.sqrt(dfh.x**2+dfh.y**2)
         dfh['z1'] = dfh['z']/dfh['rt']        
         dz = 0.000015
-        stepdz = 0.0000025
-        steps = 35
+        stepdz = 0.000001
+        steps = 70
         for ii in tqdm(range(steps)):
             dz = dz + ii*stepdz
             dfh['a1'] = dfh['a0']+dz*dfh['z']*np.sign(dfh['z'].values)
@@ -169,7 +171,7 @@ class Clusterer(object):
                 self.clusters = dfh['s1'].values
                 dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
         dz = 0.000015
-        stepdz = -0.0000025
+        stepdz = -0.000001
         for ii in tqdm(range(steps)):
             dz = dz + ii*stepdz
             dfh['a1'] = dfh['a0']+dz*dfh['z']*np.sign(dfh['z'].values)
@@ -212,31 +214,89 @@ def create_one_event_submission(event_id, hits, labels):
     submission = pd.DataFrame(data=sub_data, columns=["event_id", "hit_id", "track_id"]).astype(int)
     return submission
 
-dataset_submissions = []
-dataset_scores = []
+def predict_create_submission_in_batch():
+    Num_threads = 2
+    submissions = []
+    scores = []
+    result_submissions = [None]*Num_threads
+    result_scores = [None]*Num_threads
+    print('Using ' + str(Num_threads) + ' Threads')
 
-for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=0, nevents=5):
-    # Track pattern recognition
-    model = Clusterer()
-    labels = model.predict(hits)
+    def parallel_thread(event_id, hits, truth, result_submissions, result_scores, index):
+        print('Starting the worker of the event ' + event_id + ' with index ' + str(index))
+        model = Clusterer()
+        # a list of labels 
+        labels = model.predict(hits)
+        print('Finished the worker of the event ' + event_id + ' with index ' + str(index))
 
-    # Prepare submission for an event
-    one_submission = create_one_event_submission(event_id, hits, labels)
-    dataset_submissions.append(one_submission)
+        # Prepare submission for an event
+        print('Creating submission of the event ' + event_id + ' with index ' + str(index))
+        result_submissions[index] = create_one_event_submission(event_id, hits, labels)
 
-    # Score for the event
-    score = score_event(truth, one_submission)
-    dataset_scores.append(score)
+        # Score for the event
+        if truth is not None:
+            result_scores[index] = score_event(truth, result_submissions[index])
 
-    print("Score for event %d: %.8f" % (event_id, score))
+        return True
+        
+    threads = []
 
-print('Mean score: %.8f' % (np.mean(dataset_scores)))
+    for ii in range(Num_threads):
+        event_id, hits, _, _, truth = load_dataset(path_to_train, skip=ii, nevents=1)
+        thread = thr.Thread(target=parallel_thread, args=[event_id, hits, truth, result_submissions, result_scores, ii])
+        thread.start()
+        threads.append(thread)
+
+    for thread in threads:
+        thread.join()
+    
+    for ii in range(Num_threads):
+        submissions.extend(result_submissions[ii])
+        scores.extend(result_scores[ii])
+    return submissions, scores
+
+
+# event_id_list = []
+# hits_list = []
+# truth_list = []
+
+# for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=0, nevents=5):
+#     event_id_list.append(event_id)
+#     hits_list.append(hits)
+#     truth_list.append(truth)
+
+# submissions, scores = predict_create_submission_in_batch(event_id_list, hits_list, truth_list)
+# for i in range(submissions):
+#     print(submissions[i])
+#     print(scores[i])
+
+
+# dataset_submissions = []
+# dataset_scores = []
+
+
+# for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=0, nevents=5):
+#     # Track pattern recognition
+#     model = Clusterer()
+#     labels = model.predict(hits)
+
+#     # Prepare submission for an event
+#     one_submission = create_one_event_submission(event_id, hits, labels)
+#     dataset_submissions.append(one_submission)
+
+#     # Score for the event
+#     score = score_event(truth, one_submission)
+#     dataset_scores.append(score)
+
+#     print("Score for event %d: %.8f" % (event_id, score))
+
+# print('Mean score: %.8f' % (np.mean(dataset_scores)))
 
 
 path_to_test = "../input/test"
 test_dataset_submissions = []
 
-create_submission = False # True for submission 
+create_submission = True # True for submission 
 if create_submission:
     for event_id, hits, cells in load_dataset(path_to_test, parts=['hits', 'cells']):
 
