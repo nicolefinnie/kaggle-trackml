@@ -84,7 +84,8 @@ class Clusterer(object):
     def _eliminate_outliers(self,labels,M):
         norms=np.zeros((len(labels)),np.float32)
         indices=np.zeros((len(labels)),np.float32)
-        for i, cluster in tqdm(enumerate(labels),total=len(labels)):
+        #for i, cluster in tqdm(enumerate(labels),total=len(labels)):
+        for i, cluster in enumerate(labels):
             if cluster == 0:
                 continue
             index = np.argwhere(self.clusters==cluster)
@@ -146,7 +147,8 @@ class Clusterer(object):
         dz = 0.000015
         stepdz = 0.000001
         steps = 70
-        for ii in tqdm(range(steps)):
+        #for ii in tqdm(range(steps)):
+        for ii in range(steps):
             dz = dz + ii*stepdz
             dfh['a1'] = dfh['a0']+dz*dfh['z']*np.sign(dfh['z'].values)
             dfh['x1'] = dfh['a1']/dfh['z1']
@@ -172,7 +174,8 @@ class Clusterer(object):
                 dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
         dz = 0.000015
         stepdz = -0.000001
-        for ii in tqdm(range(steps)):
+        #for ii in tqdm(range(steps)):
+        for ii in range(steps):
             dz = dz + ii*stepdz
             dfh['a1'] = dfh['a0']+dz*dfh['z']*np.sign(dfh['z'].values)
             dfh['x1'] = dfh['a1']/dfh['z1']
@@ -214,23 +217,24 @@ def create_one_event_submission(event_id, hits, labels):
     submission = pd.DataFrame(data=sub_data, columns=["event_id", "hit_id", "track_id"]).astype(int)
     return submission
 
-def predict_create_submission_in_batch():
-    Num_threads = 2
+def predict_create_submission_in_batch(events_id_list, hits_list, truth_list):
+    num_threads = len(event_id_list)
+    print('num_threads: ' + str(num_threads))
     submissions = []
     scores = []
-    result_submissions = [None]*Num_threads
-    result_scores = [None]*Num_threads
-    print('Using ' + str(Num_threads) + ' Threads')
+    result_submissions = [None]*num_threads
+    result_scores = [None]*num_threads
+    print('Using ' + str(num_threads) + ' Threads')
 
     def parallel_thread(event_id, hits, truth, result_submissions, result_scores, index):
-        print('Starting the worker of the event ' + event_id + ' with index ' + str(index))
+        print('Starting the worker of the event ' + str(event_id) + ' with index ' + str(index))
         model = Clusterer()
         # a list of labels 
         labels = model.predict(hits)
-        print('Finished the worker of the event ' + event_id + ' with index ' + str(index))
+        print('Finished the worker of the event ' + str(event_id) + ' with index ' + str(index))
 
         # Prepare submission for an event
-        print('Creating submission of the event ' + event_id + ' with index ' + str(index))
+        print('Creating submission of the event ' + str(event_id) + ' with index ' + str(index))
         result_submissions[index] = create_one_event_submission(event_id, hits, labels)
 
         # Score for the event
@@ -241,34 +245,35 @@ def predict_create_submission_in_batch():
         
     threads = []
 
-    for ii in range(Num_threads):
-        event_id, hits, _, _, truth = load_dataset(path_to_train, skip=ii, nevents=1)
-        thread = thr.Thread(target=parallel_thread, args=[event_id, hits, truth, result_submissions, result_scores, ii])
+    for ii in range(num_threads):
+        #event_id, hits, _, _, truth = load_dataset(path_to_train, skip=ii, nevents=1)
+        thread = thr.Thread(target=parallel_thread, args=[events_id_list[ii], hits_list[ii], truth_list[ii], result_submissions, result_scores, ii])
         thread.start()
         threads.append(thread)
 
     for thread in threads:
         thread.join()
     
-    for ii in range(Num_threads):
+    for ii in range(num_threads):
         submissions.extend(result_submissions[ii])
         scores.extend(result_scores[ii])
     return submissions, scores
 
 
-# event_id_list = []
-# hits_list = []
-# truth_list = []
+event_id_list = []
+hits_list = []
+truth_list = []
 
-# for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=0, nevents=5):
-#     event_id_list.append(event_id)
-#     hits_list.append(hits)
-#     truth_list.append(truth)
+for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=0, nevents=5):
+    event_id_list.append(event_id)
+    hits_list.append(hits)
+    truth_list.append(truth)
 
-# submissions, scores = predict_create_submission_in_batch(event_id_list, hits_list, truth_list)
-# for i in range(submissions):
-#     print(submissions[i])
-#     print(scores[i])
+submissions, scores = predict_create_submission_in_batch(event_id_list, hits_list, truth_list)
+for i in range(len(submissions)):
+    #print(submissions[i])
+    #print(scores[i])
+    print("Score for event %d: %.8f" % (event_id_list[i], scores[i]))
 
 
 # dataset_submissions = []
@@ -296,7 +301,7 @@ def predict_create_submission_in_batch():
 path_to_test = "../input/test"
 test_dataset_submissions = []
 
-create_submission = True # True for submission 
+create_submission = False # True for submission 
 if create_submission:
     for event_id, hits, cells in load_dataset(path_to_test, parts=['hits', 'cells']):
 
