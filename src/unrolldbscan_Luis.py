@@ -18,7 +18,7 @@ import argparse
 class Clusterer(object):
     def __init__(self,rz_scales=[0.4, 1.6, 0.5]):                        
         self.rz_scales=rz_scales
-    
+
     def _eliminate_outliers(self,labels,M):
         norms=np.zeros((len(labels)),np.float32)
         indices=np.zeros((len(labels)),np.float32)
@@ -74,7 +74,7 @@ class Clusterer(object):
         X = ss.fit_transform(hits[['x2', 'y2', 'z2']].values)
         for i, rz_scale in enumerate(self.rz_scales):
             X[:,i] = X[:,i] * rz_scale
-       
+          
         return X
     def _init(self, dfh):
         dfh['r'] = np.sqrt(dfh.x**2+dfh.y**2+dfh.z**2)
@@ -84,18 +84,23 @@ class Clusterer(object):
         dfh['z1'] = dfh['z']/dfh['rt']        
         dz = 0.000015
         stepdz = 0.000001
-        stepeps = 0.0000225
-        steps = 110
+        stepeps = 0.00000225
+        steps = 100
+        
         for ii in tqdm(range(steps)):
             dz = dz + ii*stepdz
             dfh['a1'] = dfh['a0']+dz*dfh['z']*np.sign(dfh['z'].values)
             dfh['x1'] = dfh['a1']/dfh['z1']
             dfh['x2'] = 1/dfh['z1']
-            dfh['x3'] = dfh['x1']+dfh['x2']
+            #dfh['x3'] = dfh['x1']+dfh['x2']
+            dfh['sina1'] = np.sin(dfh['a1'])
+            dfh['cosa1'] = np.cos(dfh['a1'])
+            
             ss = StandardScaler()
-            dfs = ss.fit_transform(dfh[['a1','z1','x1','x2','x3']].values)
-      
-            #self.clusters = DBSCAN(eps=0.0033-dz,min_samples=1,metric='euclidean', n_jobs=8).fit(dfs).labels_
+     #       dfs = ss.fit_transform(dfh[['a1','z1','x1','x2','x3']].values)
+            c = [0.85, 0.85, 0.75, 0.5, 0.5]
+            dfs = ss.fit_transform(dfh[['sina1','cosa1','z1','x1','x2']].values)
+            dfs = np.multiply(dfs, c)
             self.clusters = DBSCAN(eps=0.0033-ii*stepeps,min_samples=1,metric='euclidean', n_jobs=8).fit(dfs).labels_
 
             if ii==0:
@@ -114,17 +119,20 @@ class Clusterer(object):
                 dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
         dz = 0.000015
         stepdz = -0.000001
-        stepeps = -0.0000225
+        stepeps = -0.00000225
         for ii in tqdm(range(steps)):
             dz = dz + ii*stepdz
             dfh['a1'] = dfh['a0']+dz*dfh['z']*np.sign(dfh['z'].values)
             dfh['x1'] = dfh['a1']/dfh['z1']
             dfh['x2'] = 1/dfh['z1']
             dfh['x3'] = dfh['x1']+dfh['x2']
+            dfh['sina1'] = np.sin(dfh['a1'])
+            dfh['cosa1'] = np.cos(dfh['a1'])
+            
             ss = StandardScaler()
-            dfs = ss.fit_transform(dfh[['a1','z1','x1','x2','x3']].values)
-       
-            #self.clusters = DBSCAN(eps=0.0033+dz,min_samples=1,metric='euclidean', n_jobs=8).fit(dfs).labels_
+            #dfs = ss.fit_transform(dfh[['a1','z1','x1','x2','x3']].values)
+            dfs = ss.fit_transform(dfh[['sina1','cosa1','z1','x1','x2']].values)
+            dfs = np.multiply(dfs, c)
             self.clusters = DBSCAN(eps=0.0033+ii*stepeps,min_samples=1,metric='euclidean', n_jobs=8).fit(dfs).labels_
 
 
