@@ -67,55 +67,54 @@ path_to_train = "../input/train_100_events"
 # This event is in Train_1
 event_prefix = "event000001000"
 
-hits, cells, particles, truth = load_event(os.path.join(path_to_train, event_prefix))
+for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=0, nevents=1):
 
-hits.head()
+    #hits, cells, particles, truth = load_event(os.path.join(path_to_train, event_prefix))
 
-model = Clusterer(rz_scales=RZ_SCALES)
-labels = model.predict(hits)
+    #hits.head()
 
-print(len(labels))
-print(labels.shape)
-print(labels)
-count0 = np.count_nonzero(labels == 0)
-count1 = np.count_nonzero(labels == 1)
-count2 = np.count_nonzero(labels == 2)
-#print(count0)
-#print(count1)
-#print(count2)
-max_track = np.amax(labels)
-for i in range(0,max_track+1):
-    hit_count = np.count_nonzero(labels == i)
-    if hit_count < 5:
-        labels[labels == i] = 0
-        #print('track i: ' + str(i) + ' has a hit count of: ' + str(hit_count))
+    model = Clusterer(rz_scales=RZ_SCALES)
+    labels = model.predict(hits)
 
-def renumber_labels(labels):
-    new_label = 0
-    for old_label in np.unique(labels):
-        if not old_label == new_label:
-            labels[labels == old_label] = new_label
-        new_label += 1
+    #print(len(labels))
+    print('truth shape: ' + str(truth.shape))
+    #print(truth.shape)
+    #print(truth.head)
 
-    return labels
+    sd.count_truth_track_seed_hits(labels, truth, print_results=True)
+    # volume_id -> 7,8,9
 
-labels = renumber_labels(labels)
+    truth = truth.merge(hits, on=['hit_id'], how='left')
+    #truth = truth.merge(particles, on=['particle_id'], how='left')
+    #print(truth.head)
+    hits2 = hits.copy(deep=True)
+    hits2['pred_track'] = 0
+    my_volumes = [7, 8, 9]
+    hits3 = hits2.loc[hits2['volume_id'].isin(my_volumes)]
+    #indexes = hits2.index[hits2['volume_id'].isin(my_volumes)].tolist()
+    model2 = Clusterer(rz_scales=RZ_SCALES)
+    hits4 = hits3.copy(deep=True)
+    labels2 = model.predict(hits4)
 
-print('truth shape: ' + str(truth.shape))
-#print(truth.shape)
-#print(truth.head)
+    unique2 = np.unique(labels2)
+    print('unique2: ' + str(unique2))
+    truth2 = truth.loc[truth['volume_id'].isin(my_volumes)]
+    truth2 = truth2.copy(deep=True)
+    sd.count_truth_track_seed_hits(labels2, truth2, print_results=True)
 
-_ = sd.count_truth_track_seed_hits(labels, truth, print_results=True)
 
-seeds = sd.find_first_seeds(labels, 5, hits)
-print(seeds)
+    # Code commented out to generate seeds
+    #_ = sd.count_truth_track_seed_hits(labels, truth, print_results=True)
 
-count = sd.count_truth_track_seed_hits(seeds, truth, print_results=True)
+    #seeds = sd.find_first_seeds(labels, 5, hits)
+    #print(seeds)
 
-submission = create_one_event_submission(0, hits, labels)
-score = score_event(truth, submission)
+    #count = sd.count_truth_track_seed_hits(seeds, truth, print_results=True)
 
-print("Your score: ", score)
+    submission = create_one_event_submission(0, hits, labels)
+    score = score_event(truth, submission)
+
+    print("Your score: ", score)
 
 dataset_submissions = []
 dataset_scores = []
