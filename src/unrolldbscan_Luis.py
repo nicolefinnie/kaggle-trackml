@@ -9,7 +9,7 @@ import multiprocessing as mp
 import threading as thr
 
 from sklearn.preprocessing import StandardScaler
-import hdbscan
+#import hdbscan
 from scipy import stats
 from tqdm import tqdm
 from sklearn.cluster import DBSCAN
@@ -29,7 +29,7 @@ class Clusterer(object):
             index = np.argwhere(self.clusters==cluster)
             index = np.reshape(index,(index.shape[0]))
             indices[i] = len(index)
-            x = M[index]
+            #x = M[index]
             #norms[i] = self._test_quadric(x)
         #threshold1 = np.percentile(norms,90)*5
         threshold2 = 25
@@ -84,9 +84,9 @@ class Clusterer(object):
         dfh['a0'] = np.arctan2(dfh.y,dfh.x)
         dfh['z1'] = dfh['z']/dfh['rt']        
         dz = 0.000015
-        stepdz = 0.000001
-        stepeps = 0.00000225
-        steps = 100
+        stepdz = 0.00000025
+        stepeps = 0.000002
+        steps = 150
         
         for ii in tqdm(range(steps)):
             dz = dz + ii*stepdz 
@@ -101,7 +101,7 @@ class Clusterer(object):
             
             dfs = ss.fit_transform(dfh[['sina1','cosa1','z1','x1','x2']].values)
             dfs = np.multiply(dfs, c)
-            self.clusters = DBSCAN(eps=0.0033-ii*stepeps,min_samples=1,metric='euclidean', n_jobs=8).fit(dfs).labels_
+            self.clusters = DBSCAN(eps=0.0033-ii*stepeps,min_samples=1,metric='euclidean', n_jobs=-1).fit(dfs).labels_
 
             if ii==0:
                 dfh['s1']=self.clusters
@@ -118,8 +118,8 @@ class Clusterer(object):
                 self.clusters = dfh['s1'].values
                 dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
         dz = 0.000015
-        stepdz = -0.000001
-        stepeps = -0.00000225
+        stepdz = -0.00000025
+        stepeps = -0.000002
         for ii in tqdm(range(steps)):
             dz = dz + ii*stepdz
             dfh['a1'] = dfh['a0']+dz*dfh['z']*np.sign(dfh['z'].values)
@@ -131,7 +131,7 @@ class Clusterer(object):
             ss = StandardScaler()
             dfs = ss.fit_transform(dfh[['sina1','cosa1','z1','x1','x2']].values)
             dfs = np.multiply(dfs, c)
-            self.clusters = DBSCAN(eps=0.0033+ii*stepeps,min_samples=1,metric='euclidean', n_jobs=8).fit(dfs).labels_
+            self.clusters = DBSCAN(eps=0.0033+ii*stepeps,min_samples=1,metric='euclidean', n_jobs=-1).fit(dfs).labels_
 
 
             dfh['s2'] = self.clusters
