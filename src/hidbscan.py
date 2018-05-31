@@ -48,7 +48,7 @@ class Clusterer(object):
         
         #cl = hdbscan.HDBSCAN(min_samples=3,min_cluster_size=7,cluster_selection_method='leaf',algorithm='boruvka_balltree')
         #cl = hdbscan.HDBSCAN(min_samples=1,min_cluster_size=7,cluster_selection_method='leaf',metric='braycurtis',approx_min_span_tree=False,algorithm='boruvka_balltree')
-        cl = hdbscan.HDBSCAN(min_samples=1,min_cluster_size=7,cluster_selection_method='leaf',metric='braycurtis',leaf_size=LEAF_SIZE,approx_min_span_tree=False)
+        cl = hdbscan.HDBSCAN(min_samples=1,min_cluster_size=3,cluster_selection_method='leaf',metric='braycurtis',leaf_size=LEAF_SIZE,approx_min_span_tree=False)
         labels = cl.fit_predict(X) + 1
         
         return labels

@@ -8,6 +8,7 @@ from trackml.score import score_event
 
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import DBSCAN
+import seeds as sd
 
 
 class Clusterer(object):
@@ -79,11 +80,11 @@ dataset_submissions = []
 dataset_scores = []
 
 
-for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=0, nevents=5):
+for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=0, nevents=1):
         
     # Track pattern recognition
     model = Clusterer(eps=global_eps)
-    labels = model.predict(hits)
+    labels = model.predict(hits)+1
         
     # Prepare submission for an event
     one_submission = create_one_event_submission(event_id, hits, labels)
@@ -94,6 +95,27 @@ for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=
     dataset_scores.append(score)
     
     print("Score for event %d: %.3f" % (event_id, score))
+
+    sd.count_truth_track_seed_hits(labels, truth, print_results=True)
+    # volume_id -> 7,8,9
+
+    truth = truth.merge(hits, on=['hit_id'], how='left')
+    #truth = truth.merge(particles, on=['particle_id'], how='left')
+    #print(truth.head)
+    hits2 = hits.copy(deep=True)
+    hits2['pred_track'] = 0
+    my_volumes = [7, 8, 9]
+    hits3 = hits2.loc[hits2['volume_id'].isin(my_volumes)]
+    #indexes = hits2.index[hits2['volume_id'].isin(my_volumes)].tolist()
+    model2 = Clusterer(eps=global_eps)
+    hits4 = hits3.copy(deep=True)
+    labels2 = model.predict(hits4)+1
+
+    unique2 = np.unique(labels2)
+    print('unique2: ' + str(unique2))
+    truth2 = truth.loc[truth['volume_id'].isin(my_volumes)]
+    truth2 = truth2.copy(deep=True)
+    sd.count_truth_track_seed_hits(labels2, truth2, print_results=True)
     
 print('Mean score: %.3f' % (np.mean(dataset_scores)))
 
