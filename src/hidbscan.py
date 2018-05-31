@@ -94,7 +94,7 @@ for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=
     #indexes = hits2.index[hits2['volume_id'].isin(my_volumes)].tolist()
     model2 = Clusterer(rz_scales=RZ_SCALES)
     hits4 = hits3.copy(deep=True)
-    labels2 = model.predict(hits4)
+    labels2 = model2.predict(hits4)
 
     unique2 = np.unique(labels2)
     print('unique2: ' + str(unique2))
