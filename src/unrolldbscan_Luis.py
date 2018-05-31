@@ -20,7 +20,7 @@ class Clusterer(object):
         self.rz_scales=rz_scales
 
     def _eliminate_outliers(self,labels,M):
-        norms=np.zeros((len(labels)),np.float32)
+        #norms=np.zeros((len(labels)),np.float32)
         indices=np.zeros((len(labels)),np.float32)
  
         for i, cluster in tqdm(enumerate(labels),total=len(labels)):
@@ -30,32 +30,34 @@ class Clusterer(object):
             index = np.reshape(index,(index.shape[0]))
             indices[i] = len(index)
             x = M[index]
-            norms[i] = self._test_quadric(x)
-        threshold1 = np.percentile(norms,90)*5
+            #norms[i] = self._test_quadric(x)
+        #threshold1 = np.percentile(norms,90)*5
         threshold2 = 25
         threshold3 = 7
         for i, cluster in enumerate(labels):
-            if norms[i] > threshold1 or indices[i] > threshold2 or indices[i] < threshold3:
+            #if norms[i] > threshold1 or indices[i] > threshold2 or indices[i] < threshold3:
+            if indices[i] > threshold2 or indices[i] < threshold3:
+             
                 self.clusters[self.clusters==cluster]=0  
 
-    def _test_quadric(self,x):
-        Z = np.zeros((x.shape[0],10), np.float32)
-        Z[:,0] = x[:,0]**2
-        Z[:,1] = 2*x[:,0]*x[:,1]
-        Z[:,2] = 2*x[:,0]*x[:,2]
-        Z[:,3] = 2*x[:,0]
-        Z[:,4] = x[:,1]**2
-        Z[:,5] = 2*x[:,1]*x[:,2]
-        Z[:,6] = 2*x[:,1]
-        Z[:,7] = x[:,2]**2
-        Z[:,8] = 2*x[:,2]
-        Z[:,9] = 1
-        v, s, t = np.linalg.svd(Z,full_matrices=False)        
-        smallest_index = np.argmin(np.array(s))
-        T = np.array(t)
-        T = T[smallest_index,:]        
-        norm = np.linalg.norm(np.dot(Z,T), ord=2)**2
-        return norm
+    # def _test_quadric(self,x):
+    #     Z = np.zeros((x.shape[0],10), np.float32)
+    #     Z[:,0] = x[:,0]**2
+    #     Z[:,1] = 2*x[:,0]*x[:,1]
+    #     Z[:,2] = 2*x[:,0]*x[:,2]
+    #     Z[:,3] = 2*x[:,0]
+    #     Z[:,4] = x[:,1]**2
+    #     Z[:,5] = 2*x[:,1]*x[:,2]
+    #     Z[:,6] = 2*x[:,1]
+    #     Z[:,7] = x[:,2]**2
+    #     Z[:,8] = 2*x[:,2]
+    #     Z[:,9] = 1
+    #     v, s, t = np.linalg.svd(Z,full_matrices=False)        
+    #     smallest_index = np.argmin(np.array(s))
+    #     T = np.array(t)
+    #     T = T[smallest_index,:]        
+    #     norm = np.linalg.norm(np.dot(Z,T), ord=2)**2
+    #     return norm
 
     def _preprocess(self, hits):
         
@@ -76,11 +78,10 @@ class Clusterer(object):
             X[:,i] = X[:,i] * rz_scale
           
         return X
+
     def _init(self, dfh):
-        dfh['r'] = np.sqrt(dfh.x**2+dfh.y**2+dfh.z**2)
         dfh['rt'] = np.sqrt(dfh.x**2+dfh.y**2)
         dfh['a0'] = np.arctan2(dfh.y,dfh.x)
-        dfh['r2'] = np.sqrt(dfh.x**2+dfh.y**2)
         dfh['z1'] = dfh['z']/dfh['rt']        
         dz = 0.000015
         stepdz = 0.000001
@@ -88,17 +89,16 @@ class Clusterer(object):
         steps = 100
         
         for ii in tqdm(range(steps)):
-            dz = dz + ii*stepdz
+            dz = dz + ii*stepdz 
             dfh['a1'] = dfh['a0']+dz*dfh['z']*np.sign(dfh['z'].values)
             dfh['x1'] = dfh['a1']/dfh['z1']
             dfh['x2'] = 1/dfh['z1']
-            #dfh['x3'] = dfh['x1']+dfh['x2']
             dfh['sina1'] = np.sin(dfh['a1'])
             dfh['cosa1'] = np.cos(dfh['a1'])
             
             ss = StandardScaler()
-     #       dfs = ss.fit_transform(dfh[['a1','z1','x1','x2','x3']].values)
             c = [0.85, 0.85, 0.75, 0.5, 0.5]
+            
             dfs = ss.fit_transform(dfh[['sina1','cosa1','z1','x1','x2']].values)
             dfs = np.multiply(dfs, c)
             self.clusters = DBSCAN(eps=0.0033-ii*stepeps,min_samples=1,metric='euclidean', n_jobs=8).fit(dfs).labels_
@@ -110,7 +110,7 @@ class Clusterer(object):
                 dfh['s2'] = self.clusters
                 dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
                 maxs1 = dfh['s1'].max()
-                cond = np.where(dfh['N2'].values>dfh['N1'].values)
+                cond = np.where(dfh['N2'].values>dfh['N1'].values )
                 s1 = dfh['s1'].values
                 s1[cond] = dfh['s2'].values[cond]+maxs1
                 dfh['s1'] = s1
@@ -125,12 +125,10 @@ class Clusterer(object):
             dfh['a1'] = dfh['a0']+dz*dfh['z']*np.sign(dfh['z'].values)
             dfh['x1'] = dfh['a1']/dfh['z1']
             dfh['x2'] = 1/dfh['z1']
-            dfh['x3'] = dfh['x1']+dfh['x2']
             dfh['sina1'] = np.sin(dfh['a1'])
             dfh['cosa1'] = np.cos(dfh['a1'])
             
             ss = StandardScaler()
-            #dfs = ss.fit_transform(dfh[['a1','z1','x1','x2','x3']].values)
             dfs = ss.fit_transform(dfh[['sina1','cosa1','z1','x1','x2']].values)
             dfs = np.multiply(dfs, c)
             self.clusters = DBSCAN(eps=0.0033+ii*stepeps,min_samples=1,metric='euclidean', n_jobs=8).fit(dfs).labels_
@@ -139,27 +137,32 @@ class Clusterer(object):
             dfh['s2'] = self.clusters
             dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
             maxs1 = dfh['s1'].max()
-            cond = np.where(dfh['N2'].values>dfh['N1'].values)
+     
+            cond = np.where(dfh['N2'].values>dfh['N1'].values  )
             s1 = dfh['s1'].values
             s1[cond] = dfh['s2'].values[cond]+maxs1
             dfh['s1'] = s1
             dfh['s1'] = dfh['s1'].astype('int64')
             dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
         return dfh['s1'].values
+
     def predict(self, hits): 
         self.clusters = self._init(hits)        
         X = self._preprocess(hits) 
                
-        cl = hdbscan.HDBSCAN(min_samples=1,min_cluster_size=7,
-                             metric='braycurtis',cluster_selection_method='leaf',algorithm='best', leaf_size=50, approx_min_span_tree=False)
+        # cl = hdbscan.HDBSCAN(min_samples=1,min_cluster_size=7,
+        #                      metric='braycurtis',cluster_selection_method='leaf',algorithm='best', leaf_size=50, approx_min_span_tree=False)
         
         labels = np.unique(self.clusters)
+        
         n_labels = 0
         while n_labels < len(labels):
             n_labels = len(labels)
             self._eliminate_outliers(labels,X)
             max_len = np.max(self.clusters)
-            self.clusters[self.clusters==0] = cl.fit_predict(X[self.clusters==0])+max_len
+            #self.clusters[self.clusters==0] = cl.fit_predict(X[self.clusters==0])+max_len
+            self.clusters[self.clusters==0]  = DBSCAN(eps=0.0075,min_samples=1,algorithm='kd_tree', n_jobs=8).fit(X[self.clusters==0]).labels_+max_len
+
             labels = np.unique(self.clusters)
         return self.clusters
 
