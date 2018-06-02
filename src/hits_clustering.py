@@ -16,11 +16,13 @@ from sklearn.cluster import DBSCAN
 import argparse
 
 RZ_SCALES = [0.4, 1.6, 0.5]
-SCALED_DISTANCE = [1.0, 1.0, 0.7, 0.025, 0.025]
+#SCALED_DISTANCE = [1.0, 1.0, 0.7, 0.025, 0.025]
+SCALED_DISTANCE = [1, 1, 0.4, 0.4]
+
 DZ = 0.000015
-STEPDZ = 0.00000025
+STEPDZ = 0.0000002
 STEPEPS = 0.000002  
-STEPS = 150
+STEPS = 200
 THRESHOLD_MIN = 5
 THRESHOLD_MAX = 30
 
@@ -74,9 +76,11 @@ class Clusterer(object):
         return X
 
     def _init(self, dfh):
+        dfh['r'] = np.sqrt(dfh.x**2+dfh.y**2+dfh.z**2)
         dfh['rt'] = np.sqrt(dfh.x**2+dfh.y**2)
         dfh['a0'] = np.arctan2(dfh.y,dfh.x)
-        dfh['z1'] = dfh['z']/dfh['rt']        
+        dfh['z1'] = dfh['z']/dfh['rt'] 
+        dfh['z2'] = dfh['z']/dfh['r']       
         dz = DZ
         
         for ii in tqdm(range(STEPS)):
@@ -89,7 +93,9 @@ class Clusterer(object):
             
             ss = StandardScaler()
             
-            dfs = ss.fit_transform(dfh[['sina1','cosa1','z1','x1','x2']].values)
+            #dfs = ss.fit_transform(dfh[['sina1','cosa1','z1','x1','x2']].values)
+            dfs = ss.fit_transform(dfh[['sina1','cosa1','z1', 'z2']].values)
+            
             dfs = np.multiply(dfs, SCALED_DISTANCE)
             self.clusters = DBSCAN(eps=0.0033-ii*STEPEPS,min_samples=1,metric='euclidean', n_jobs=-1).fit(dfs).labels_
 
@@ -118,7 +124,8 @@ class Clusterer(object):
             dfh['cosa1'] = np.cos(dfh['a1'])
             
             ss = StandardScaler()
-            dfs = ss.fit_transform(dfh[['sina1','cosa1','z1','x1','x2']].values)
+            #dfs = ss.fit_transform(dfh[['sina1','cosa1','z1','x1','x2']].values)
+            dfs = ss.fit_transform(dfh[['sina1','cosa1','z1', 'z2']].values)
             dfs = np.multiply(dfs, SCALED_DISTANCE)
             self.clusters = DBSCAN(eps=0.0033-ii*STEPEPS,min_samples=1,metric='euclidean', n_jobs=-1).fit(dfs).labels_
 
