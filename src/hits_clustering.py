@@ -17,6 +17,7 @@ import argparse
 import seeds as sd
 import collections as coll
 import math
+from extension import extend
 
 RZ_SCALES = [0.4, 1.6, 0.5]
 #SCALED_DISTANCE = [1.0, 1.0, 0.7, 0.025, 0.025]
@@ -24,14 +25,15 @@ SCALED_DISTANCE = [1, 1, 0.4, 0.4]
 DBSCAN_GLOBAL_EPS = 0.0075
 
 DZ = 0.000015
-#STEPDZ = 0.0000002
-#STEPEPS = 0.000002 
-#STEPS = 100
+# STEPDZ = 0.0000002
+# STEPEPS = 0.000002 
+# STEPS = 10
 STEPDZ = 0.0000001
 STEPEPS = 0.0000015
 STEPS = 200
 THRESHOLD_MIN = 5
 THRESHOLD_MAX = 30
+EXTENSION_ATTEMPT = 8
 
 print('rz scales: ' + str(RZ_SCALES))
 print('scaled distance: ' + str(SCALED_DISTANCE))
@@ -41,6 +43,7 @@ print('stepeps: ' + str(STEPEPS))
 print('steps: ' + str(STEPS))
 print('threshold min: ' + str(THRESHOLD_MIN))
 print('threshold max: ' + str(THRESHOLD_MAX))
+print('extension attempt: ' + str(EXTENSION_ATTEMPT))
 
 
 class DBScanClusterer(object):
@@ -224,6 +227,7 @@ def run_single_threaded_training(skip, nevents):
 
         # Score for the event
         one_submission = create_one_event_submission(event_id, hits, labels)
+   
         score = score_event(truth, one_submission)
         print("Original score for event %d: %.8f" % (event_id, score))
 
@@ -277,13 +281,18 @@ def run_single_threaded_training(skip, nevents):
 
         # Prepare submission for an event
         one_submission = create_one_event_submission(event_id, hits, labels3)
-        dataset_submissions.append(one_submission)
-
         # Score for the event
         score = score_event(truth, one_submission)
+        print("2-pass Score for event %d: %.8f" % (event_id, score))
+
+        for i in range(EXTENSION_ATTEMPT): 
+            one_submission = extend(one_submission, hits)
+        score = score_event(truth, one_submission)
+
+        print("Add Extension score for event %d: %.8f" % (event_id, score))
+        dataset_submissions.append(one_submission)
         dataset_scores.append(score)
 
-        print("Score for event %d: %.8f" % (event_id, score))
 
     print('Mean score: %.8f' % (np.mean(dataset_scores)))
 
@@ -346,6 +355,10 @@ if __name__ == '__main__':
 
             # Prepare submission for an event
             one_submission = create_one_event_submission(event_id, hits, labels3)
+
+            for i in range(EXTENSION_ATTEMPT): 
+                one_submission = extend(one_submission, hits)
+        
             test_dataset_submissions.append(one_submission)
             
 
