@@ -9,23 +9,29 @@ import multiprocessing as mp
 import threading as thr
 
 from sklearn.preprocessing import StandardScaler
-#import hdbscan
+import hdbscan
 from scipy import stats
 from tqdm import tqdm
 from sklearn.cluster import DBSCAN
 import argparse
+import seeds as sd
+import collections as coll
+import math
 
 RZ_SCALES = [0.4, 1.6, 0.5]
 #SCALED_DISTANCE = [1.0, 1.0, 0.7, 0.025, 0.025]
 SCALED_DISTANCE = [1, 1, 0.4, 0.4]
+DBSCAN_GLOBAL_EPS = 0.0075
 
 DZ = 0.000015
+#STEPDZ = 0.0000002
+#STEPEPS = 0.000002 
+#STEPS = 100
 STEPDZ = 0.0000001
-STEPEPS = 0.0000015  
+STEPEPS = 0.0000015
 STEPS = 200
 THRESHOLD_MIN = 5
 THRESHOLD_MAX = 30
-
 
 print('rz scales: ' + str(RZ_SCALES))
 print('scaled distance: ' + str(SCALED_DISTANCE))
@@ -35,6 +41,43 @@ print('stepeps: ' + str(STEPEPS))
 print('steps: ' + str(STEPS))
 print('threshold min: ' + str(THRESHOLD_MIN))
 print('threshold max: ' + str(THRESHOLD_MAX))
+
+
+class DBScanClusterer(object):
+    
+    def __init__(self):
+        self.eps = DBSCAN_GLOBAL_EPS
+    
+    def _preprocess(self, hits):
+        ss = StandardScaler()
+        X = ss.fit_transform(hits[['x', 'y', 'z']].values)
+        return X
+    
+    def predict(self, hits):
+        X = self._preprocess(hits)
+        
+        cl = DBSCAN(eps=self.eps, min_samples=3, algorithm='kd_tree')
+        labels = cl.fit_predict(X)
+        
+        return labels
+
+class HDBScanClusterer(object):
+    
+    def __init__(self):
+        self.rz_scales = RZ_SCALES
+    
+    def _preprocess(self, hits):
+        ss = StandardScaler()
+        X = ss.fit_transform(hits[['x', 'y', 'z']].values)
+        return X
+    
+    def predict(self, hits):
+        X = self._preprocess(hits)
+        LEAF_SIZE = 50
+        cl = hdbscan.HDBSCAN(min_samples=1,min_cluster_size=5,cluster_selection_method='leaf',metric='braycurtis',leaf_size=LEAF_SIZE,approx_min_span_tree=False)
+        labels = cl.fit_predict(X) + 1
+        
+        return labels
 
 
 class Clusterer(object):
@@ -157,6 +200,17 @@ def create_one_event_submission(event_id, hits, labels):
     submission = pd.DataFrame(data=sub_data, columns=["event_id", "hit_id", "track_id"]).astype(int)
     return submission
 
+def hack_one_last_run(labels, labels2, hits2):
+    labels2_x = np.copy(labels)
+    labels2_x[labels2_x != 0] = 0
+
+    # Expand our labels to include zero(0) for any hits that were removed.
+    hits2_indexes = hits2.index.tolist()
+    fix_ix = 0
+    for hits2_ix in hits2_indexes:
+        labels2_x[hits2_ix] = labels2[fix_ix]
+        fix_ix = fix_ix + 1
+    return labels2_x
 
 def run_single_threaded_training(skip, nevents):
     path_to_train = "../input/train_1"
@@ -168,8 +222,61 @@ def run_single_threaded_training(skip, nevents):
         model = Clusterer()
         labels = model.predict(hits)
 
-        # Prepare submission for an event
+        # Score for the event
         one_submission = create_one_event_submission(event_id, hits, labels)
+        score = score_event(truth, one_submission)
+        print("Original score for event %d: %.8f" % (event_id, score))
+
+        # Make sure max track ID is not larger than length of labels list.
+        labels = sd.renumber_labels(labels)
+
+        # Filter out any tracks that do not originate from volumes 7, 8, or 9
+        seed_length = 5
+        my_volumes = [7, 8, 9]
+        valid_labels = sd.filter_invalid_tracks(labels, hits, my_volumes, seed_length)
+
+        # Make a copy of the hits, removing all hits from valid_labels
+        hits2 = hits.copy(deep=True)
+        drop_indices = np.where(valid_labels != 0)[0]
+        hits2 = hits2.drop(hits2.index[drop_indices])
+
+        # Re-run our clustering algorithm on the remaining hits
+        model2 = Clusterer()
+        labels2 = model2.predict(hits2)
+        labels2[labels2 == 0] = 0 - len(labels) - 1
+        labels2 = labels2 + len(labels) + 1
+        # Expand labels2 to include a zero(0) entry for all hits that were removed
+        # labels2_x = hack_one_last_run(labels, labels2, hits2)
+        # one_submission = create_one_event_submission(event_id, hits, labels2_x)
+        # score = score_event(truth, one_submission)
+        # print("Score for unroll 2: %.8f" % (score))
+
+        # # Re-run our clustering algorithm on the remaining hits
+        # model2a = DBScanClusterer()
+        # labels2a = model2a.predict(hits2)
+        # labels2a = labels2a + len(labels) + 1
+        # # Expand labels2 to include a zero(0) entry for all hits that were removed
+        # labels2a_x = hack_one_last_run(labels, labels2a, hits2)
+        # one_submission = create_one_event_submission(event_id, hits, labels2a_x)
+        # score = score_event(truth, one_submission)
+        # print("Score for dbscan 2: %.8f" % (score))
+
+        # # Re-run our clustering algorithm on the remaining hits
+        # model2b = HDBScanClusterer()
+        # labels2b = model2b.predict(hits2)
+        # labels2b = labels2b + len(labels) + 1
+        # # Expand labels2 to include a zero(0) entry for all hits that were removed
+        # labels2b_x = hack_one_last_run(labels, labels2b, hits2)
+        # one_submission = create_one_event_submission(event_id, hits, labels2b_x)
+        # score = score_event(truth, one_submission)
+        # print("Score for hdbscan 2: %.8f" % (score))
+
+        # Create final track labels, merging those tracks found in the first and second passes
+        labels3 = np.copy(valid_labels)
+        labels3[labels3 == 0] = labels2
+
+        # Prepare submission for an event
+        one_submission = create_one_event_submission(event_id, hits, labels3)
         dataset_submissions.append(one_submission)
 
         # Score for the event
@@ -216,8 +323,29 @@ if __name__ == '__main__':
             model = Clusterer()
             labels = model.predict(hits)
 
+            # Make sure max track ID is not larger than length of labels list.
+            labels = sd.renumber_labels(labels)
+
+            # Filter out any tracks that do not originate from volumes 7, 8, or 9
+            seed_length = 5
+            my_volumes = [7, 8, 9]
+            valid_labels = sd.filter_invalid_tracks(labels, hits, my_volumes, seed_length)
+
+            # Make a copy of the hits, removing all hits from valid_labels
+            hits2 = hits.copy(deep=True)
+            drop_indices = np.where(valid_labels != 0)[0]
+            hits2 = hits2.drop(hits2.index[drop_indices])
+
+            # Re-run our clustering algorithm on the remaining hits
+            model2 = Clusterer()
+            labels2 = model2.predict(hits2)
+            labels2 = labels2 + len(labels) + 1
+
+            labels3 = np.copy(valid_labels)
+            labels3[labels3 == 0] = labels2
+
             # Prepare submission for an event
-            one_submission = create_one_event_submission(event_id, hits, labels)
+            one_submission = create_one_event_submission(event_id, hits, labels3)
             test_dataset_submissions.append(one_submission)
             
 
