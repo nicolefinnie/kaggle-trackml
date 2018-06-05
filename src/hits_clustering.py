@@ -18,6 +18,7 @@ import seeds as sd
 import collections as coll
 import math
 from extension import extend
+import cone_slicing as cone
 
 RZ_SCALES = [0.4, 1.6, 0.5]
 #SCALED_DISTANCE = [1.0, 1.0, 0.7, 0.025, 0.025]
@@ -231,6 +232,44 @@ def run_single_threaded_training(skip, nevents):
     dataset_scores = []
 
     for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=skip, nevents=nevents):
+
+        if False:
+            #model = Clusterer()
+            #labels = model.predict(hits)
+            #xseed_length = 5
+            #xmy_volumes = [7, 8, 9]
+            #labels = sd.filter_invalid_tracks(labels, hits, xmy_volumes, xseed_length)
+
+            labels = cone.slice_cones(hits, delta_angle=1.0)
+            labels = sd.renumber_labels(labels)
+            one_submission = create_one_event_submission(event_id, hits, labels)
+            score = score_event(truth, one_submission)
+            print("Cone slice score for event %d: %.8f" % (event_id, score))
+
+            hits1a = hits.copy(deep=True)
+            drop_indices = np.where(labels != 0)[0]
+            hits1a = hits1a.drop(hits1a.index[drop_indices])
+            #hits1a = hits1a.reset_index(drop=True)
+
+            # Use helix unrolling on the remaining tracks
+            model = Clusterer()
+            labels1a = model.predict(hits1a)
+            #labels1a = cone.slice_cones(hits1a)
+            labels1a_x = hack_one_last_run(labels, labels1a, hits1a)
+            one_submission = create_one_event_submission(event_id, hits, labels1a_x)
+            score = score_event(truth, one_submission)
+            print("Score for unroll remainders: %.8f" % (score))
+            labels1a[labels1a == 0] = 0 - len(labels) - 1
+            labels1a = labels1a + len(labels) + 1
+
+            labels1b = np.copy(labels)
+            labels1b[labels1b == 0] = labels1a
+            one_submission = create_one_event_submission(event_id, hits, labels1b)
+            score = score_event(truth, one_submission)
+            print("Merged score for event %d: %.8f" % (event_id, score))
+
+            # ORIG CODE BELOW...
+
         # Track pattern recognition
         model = Clusterer()
         labels = model.predict(hits)
