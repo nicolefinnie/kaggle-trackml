@@ -5,7 +5,7 @@ import os
 
 from trackml.dataset import load_event, load_dataset
 from trackml.score import score_event
-
+import seeds as sd
 
 
 class Clusterer(object):
@@ -36,6 +36,8 @@ class Clusterer(object):
                 used[u_track] = 1
                 track_id += 1
             
+        labels = np.asarray([int(i) for i in labels])
+        #print(labels)
         return labels
 
 
@@ -149,29 +151,28 @@ path_to_train = "../input/train_100_events"
 
 event_prefix = "event000001000"
 
-hits, cells, particles, truth = load_event(os.path.join(path_to_train, event_prefix))
+#hits, cells, particles, truth = load_event(os.path.join(path_to_train, event_prefix))
 
-hits.head()
+#hits.head()
 
 # Warning: it takes about 100s per one event.
-model = Clusterer(N_bins_r0inv=200, N_bins_gamma=500, N_theta=500, min_hits=9)
-labels = model.predict(hits)
+#model = Clusterer(N_bins_r0inv=200, N_bins_gamma=500, N_theta=500, min_hits=9)
+#labels = model.predict(hits)
 
-submission = create_one_event_submission(0, hits, labels)
-score = score_event(truth, submission)
+#submission = create_one_event_submission(0, hits, labels)
+#score = score_event(truth, submission)
 
-print("Your score: ", score)
+#print("Your score: ", score)
 
 
-load_dataset(path_to_train, skip=0, nevents=5)
+#load_dataset(path_to_train, skip=0, nevents=5)
 
 dataset_submissions = []
 dataset_scores = []
 
-for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=0, nevents=5):
-        
+for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=0, nevents=1):
     # Track pattern recognition
-    model = Clusterer(N_bins_r0inv=200, N_bins_gamma=500, N_theta=500, min_hits=9)
+    model = Clusterer(N_bins_r0inv=200, N_bins_gamma=500, N_theta=500, min_hits=12)
     labels = model.predict(hits)
         
     # Prepare submission for an event
@@ -183,6 +184,43 @@ for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=
     dataset_scores.append(score)
     
     print("Score for event %d: %.3f" % (event_id, score))
+
+    labels = sd.renumber_labels(labels)
+    seed_length = 5
+    #sd.count_truth_track_seed_hits(labels, truth, seed_length, print_results=True)
+    # volume_id -> 7,8,9
+
+    #truth = truth.merge(hits, on=['hit_id'], how='left')
+    my_head_volumes = [7, 8, 9]
+
+    valid_labels = sd.filter_invalid_tracks(labels, hits, my_head_volumes, seed_length)
+    #sd.count_truth_track_seed_hits(labels_xx, truth, seed_length, print_results=True)
+
+    # Score for the event
+    one_submission = create_one_event_submission(event_id, hits, valid_labels)
+    score = score_event(truth, one_submission)
+    print("Filtered Score for event %d: %.3f" % (event_id, score))
+
+    drop_indices = np.where(valid_labels != 0)[0]
+    hits2 = hits.copy(deep=True)
+    hits2 = hits2.drop(hits2.index[drop_indices])
+
+    # Re-run our clustering algorithm on the remaining hits
+    model2 = Clusterer(N_bins_r0inv=200, N_bins_gamma=500, N_theta=500, min_hits=8)
+    labels2 = model2.predict(hits2)
+    labels2 = sd.renumber_labels(labels2)
+    labels2[labels2 == 0] = 0 - len(labels) - 1
+    labels2 = labels2 + len(labels) + 1
+    labels3 = np.copy(valid_labels)
+    labels3[labels3 == 0] = labels2
+
+    print('Uniques 2: ' + str(np.unique(labels3)))
+
+    # Score for the event
+    one_submission = create_one_event_submission(event_id, hits, labels3)
+    score = score_event(truth, one_submission)
+    print("Final Score for event %d: %.3f" % (event_id, score))
+
     
 print('Mean score: %.3f' % (np.mean(dataset_scores)))
 
