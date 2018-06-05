@@ -9,7 +9,7 @@ import multiprocessing as mp
 import threading as thr
 
 from sklearn.preprocessing import StandardScaler
-import hdbscan
+#import hdbscan
 from scipy import stats
 from tqdm import tqdm
 from sklearn.cluster import DBSCAN
@@ -17,30 +17,35 @@ import argparse
 import seeds as sd
 import collections as coll
 import math
+from extension import extend
 
 RZ_SCALES = [0.4, 1.6, 0.5]
 #SCALED_DISTANCE = [1.0, 1.0, 0.7, 0.025, 0.025]
 SCALED_DISTANCE = [1, 1, 0.4, 0.4]
 DBSCAN_GLOBAL_EPS = 0.0075
 
-DZ = 0.000015
-#STEPDZ = 0.0000002
-#STEPEPS = 0.000002 
-#STEPS = 100
-STEPDZ = 0.0000001
-STEPEPS = 0.0000015
-STEPS = 200
+#DZ = 0.000015
+# STEPDZ = 0.0000002
+# STEPEPS = 0.000002 
+# STEPS = 10
+#STEPDZ = 0.0000001
+STEPRR = 0.05
+STEPEPS = 0.000001
+STEPS = 100
 THRESHOLD_MIN = 5
 THRESHOLD_MAX = 30
+EXTENSION_ATTEMPT = 8
 
 print('rz scales: ' + str(RZ_SCALES))
 print('scaled distance: ' + str(SCALED_DISTANCE))
-print('dz: ' + str(DZ))
-print('stepdz: ' + str(STEPDZ))
+#print('dz: ' + str(DZ))
+#print('stepdz: ' + str(STEPDZ))
+print('steprr: ' + str(STEPRR))
 print('stepeps: ' + str(STEPEPS))
 print('steps: ' + str(STEPS))
 print('threshold min: ' + str(THRESHOLD_MIN))
 print('threshold max: ' + str(THRESHOLD_MAX))
+print('extension attempt: ' + str(EXTENSION_ATTEMPT))
 
 
 class DBScanClusterer(object):
@@ -61,23 +66,23 @@ class DBScanClusterer(object):
         
         return labels
 
-class HDBScanClusterer(object):
+# class HDBScanClusterer(object):
     
-    def __init__(self):
-        self.rz_scales = RZ_SCALES
+#     def __init__(self):
+#         self.rz_scales = RZ_SCALES
     
-    def _preprocess(self, hits):
-        ss = StandardScaler()
-        X = ss.fit_transform(hits[['x', 'y', 'z']].values)
-        return X
+#     def _preprocess(self, hits):
+#         ss = StandardScaler()
+#         X = ss.fit_transform(hits[['x', 'y', 'z']].values)
+#         return X
     
-    def predict(self, hits):
-        X = self._preprocess(hits)
-        LEAF_SIZE = 50
-        cl = hdbscan.HDBSCAN(min_samples=1,min_cluster_size=5,cluster_selection_method='leaf',metric='braycurtis',leaf_size=LEAF_SIZE,approx_min_span_tree=False)
-        labels = cl.fit_predict(X) + 1
+#     def predict(self, hits):
+#         X = self._preprocess(hits)
+#         LEAF_SIZE = 50
+#         cl = hdbscan.HDBSCAN(min_samples=1,min_cluster_size=5,cluster_selection_method='leaf',metric='braycurtis',leaf_size=LEAF_SIZE,approx_min_span_tree=False)
+#         labels = cl.fit_predict(X) + 1
         
-        return labels
+#         return labels
 
 
 class Clusterer(object):
@@ -111,6 +116,8 @@ class Clusterer(object):
         r = np.sqrt(x**2 + y**2)
         hits['z2'] = z/r
 
+        #hits = hits.loc[(hits.z2 > (75-0.5)/180*np.pi) & (hits.z2 < (75+0.5)/180*np.pi)  ]
+
         ss = StandardScaler()
         X = ss.fit_transform(hits[['x2', 'y2', 'z2']].values)
         for i, rz_scale in enumerate(self.rz_scales):
@@ -123,12 +130,16 @@ class Clusterer(object):
         dfh['rt'] = np.sqrt(dfh.x**2+dfh.y**2)
         dfh['a0'] = np.arctan2(dfh.y,dfh.x)
         dfh['z1'] = dfh['z']/dfh['rt'] 
-        dfh['z2'] = dfh['z']/dfh['r']       
-        dz = DZ
+        dfh['z2'] = dfh['z']/dfh['r']    
+        rr = dfh['rt']/1000
+        #dz = DZ
         
-        for ii in tqdm(range(STEPS)):
-            dz = dz + ii*STEPDZ 
-            dfh['a1'] = dfh['a0']+dz*dfh['z']*np.sign(dfh['z'].values)
+        for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
+            print ('\r steps: %d '%ii, end='',flush=True)
+            #z = dz + ii*STEPDZ 
+            #dfh['a1'] = dfh['a0']+dz*dfh['z']*np.sign(dfh['z'].values)
+            dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi
+            
             dfh['x1'] = dfh['a1']/dfh['z1']
             dfh['x2'] = 1/dfh['z1']
             dfh['sina1'] = np.sin(dfh['a1'])
@@ -142,7 +153,7 @@ class Clusterer(object):
             dfs = np.multiply(dfs, SCALED_DISTANCE)
             self.clusters = DBSCAN(eps=0.0033-ii*STEPEPS,min_samples=1,metric='euclidean', n_jobs=-1).fit(dfs).labels_
 
-            if ii==0:
+            if ii==-STEPS:
                 dfh['s1']=self.clusters
                 dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
             else:
@@ -157,31 +168,33 @@ class Clusterer(object):
                 self.clusters = dfh['s1'].values
                 dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
 
-        dz = DZ
-        for ii in tqdm(range(STEPS)):
-            dz = dz - ii*STEPDZ
-            dfh['a1'] = dfh['a0']+dz*dfh['z']*np.sign(dfh['z'].values)
-            dfh['x1'] = dfh['a1']/dfh['z1']
-            dfh['x2'] = 1/dfh['z1']
-            dfh['sina1'] = np.sin(dfh['a1'])
-            dfh['cosa1'] = np.cos(dfh['a1'])
+        # dz = DZ
+        
+        # for ii in tqdm(range(-STEPS)):
+        #     #dz = dz - ii*STEPDZ
+        #     #dfh['a1'] = dfh['a0']+dz*dfh['z']*np.sign(dfh['z'].values)
+        #     dfh['a1'] = dfh['a0'] + (rr + 0.05*rr**2)*ii/180*np.pi
+        #     dfh['x1'] = dfh['a1']/dfh['z1']
+        #     dfh['x2'] = 1/dfh['z1']
+        #     dfh['sina1'] = np.sin(dfh['a1'])
+        #     dfh['cosa1'] = np.cos(dfh['a1'])
             
-            ss = StandardScaler()
-            #dfs = ss.fit_transform(dfh[['sina1','cosa1','z1','x1','x2']].values)
-            dfs = ss.fit_transform(dfh[['sina1','cosa1','z1', 'z2']].values)
-            dfs = np.multiply(dfs, SCALED_DISTANCE)
-            self.clusters = DBSCAN(eps=0.0033-ii*STEPEPS,min_samples=1,metric='euclidean', n_jobs=-1).fit(dfs).labels_
+        #     ss = StandardScaler()
+        #     #dfs = ss.fit_transform(dfh[['sina1','cosa1','z1','x1','x2']].values)
+        #     dfs = ss.fit_transform(dfh[['sina1','cosa1','z1', 'z2']].values)
+        #     dfs = np.multiply(dfs, SCALED_DISTANCE)
+        #     self.clusters = DBSCAN(eps=0.0033-ii*STEPEPS,min_samples=1,metric='euclidean', n_jobs=-1).fit(dfs).labels_
 
-            dfh['s2'] = self.clusters
-            dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
-            maxs1 = dfh['s1'].max()
+        #     dfh['s2'] = self.clusters
+        #     dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
+        #     maxs1 = dfh['s1'].max()
      
-            cond = np.where(dfh['N2'].values>dfh['N1'].values  )
-            s1 = dfh['s1'].values
-            s1[cond] = dfh['s2'].values[cond]+maxs1
-            dfh['s1'] = s1
-            dfh['s1'] = dfh['s1'].astype('int64')
-            dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+        #     cond = np.where(dfh['N2'].values>dfh['N1'].values  )
+        #     s1 = dfh['s1'].values
+        #     s1[cond] = dfh['s2'].values[cond]+maxs1
+        #     dfh['s1'] = s1
+        #     dfh['s1'] = dfh['s1'].astype('int64')
+        #     dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
         return dfh['s1'].values
 
     def predict(self, hits): 
@@ -192,7 +205,7 @@ class Clusterer(object):
         self._eliminate_outliers(labels)
         max_len = np.max(self.clusters)
         self.clusters[self.clusters==0] = DBSCAN(eps=0.0075,min_samples=1,algorithm='kd_tree', n_jobs=8).fit(X[self.clusters==0]).labels_+max_len
-               
+        
         return self.clusters
 
 def create_one_event_submission(event_id, hits, labels):
@@ -224,6 +237,7 @@ def run_single_threaded_training(skip, nevents):
 
         # Score for the event
         one_submission = create_one_event_submission(event_id, hits, labels)
+   
         score = score_event(truth, one_submission)
         print("Original score for event %d: %.8f" % (event_id, score))
 
@@ -277,13 +291,18 @@ def run_single_threaded_training(skip, nevents):
 
         # Prepare submission for an event
         one_submission = create_one_event_submission(event_id, hits, labels3)
-        dataset_submissions.append(one_submission)
-
         # Score for the event
         score = score_event(truth, one_submission)
+        print("2-pass Score for event %d: %.8f" % (event_id, score))
+
+        for i in range(EXTENSION_ATTEMPT): 
+            one_submission = extend(one_submission, hits)
+        score = score_event(truth, one_submission)
+
+        print("Add Extension score for event %d: %.8f" % (event_id, score))
+        dataset_submissions.append(one_submission)
         dataset_scores.append(score)
 
-        print("Score for event %d: %.8f" % (event_id, score))
 
     print('Mean score: %.8f' % (np.mean(dataset_scores)))
 
@@ -346,6 +365,10 @@ if __name__ == '__main__':
 
             # Prepare submission for an event
             one_submission = create_one_event_submission(event_id, hits, labels3)
+
+            for i in range(EXTENSION_ATTEMPT): 
+                one_submission = extend(one_submission, hits)
+        
             test_dataset_submissions.append(one_submission)
             
 
