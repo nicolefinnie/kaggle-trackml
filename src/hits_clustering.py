@@ -21,17 +21,11 @@ from extension import extend
 import cone_slicing as cone
 
 RZ_SCALES = [0.4, 1.6, 0.5]
-#SCALED_DISTANCE = [1.0, 1.0, 0.7, 0.025, 0.025]
-SCALED_DISTANCE = [1, 1, 0.4, 0.4]
+SCALED_DISTANCE = [1, 1, 0.3, 0.3]
 DBSCAN_GLOBAL_EPS = 0.0075
 
-#DZ = 0.000015
-# STEPDZ = 0.0000002
-# STEPEPS = 0.000002 
-# STEPS = 10
-#STEPDZ = 0.0000001
-STEPRR = 0.05
-STEPEPS = 0.000001
+STEPRR = 0.03
+STEPEPS = 0.0000015
 STEPS = 100
 THRESHOLD_MIN = 5
 THRESHOLD_MAX = 30
@@ -39,8 +33,6 @@ EXTENSION_ATTEMPT = 8
 
 print('rz scales: ' + str(RZ_SCALES))
 print('scaled distance: ' + str(SCALED_DISTANCE))
-#print('dz: ' + str(DZ))
-#print('stepdz: ' + str(STEPDZ))
 print('steprr: ' + str(STEPRR))
 print('stepeps: ' + str(STEPEPS))
 print('steps: ' + str(STEPS))
@@ -117,8 +109,6 @@ class Clusterer(object):
         r = np.sqrt(x**2 + y**2)
         hits['z2'] = z/r
 
-        #hits = hits.loc[(hits.z2 > (75-0.5)/180*np.pi) & (hits.z2 < (75+0.5)/180*np.pi)  ]
-
         ss = StandardScaler()
         X = ss.fit_transform(hits[['x2', 'y2', 'z2']].values)
         for i, rz_scale in enumerate(self.rz_scales):
@@ -133,12 +123,10 @@ class Clusterer(object):
         dfh['z1'] = dfh['z']/dfh['rt'] 
         dfh['z2'] = dfh['z']/dfh['r']    
         rr = dfh['rt']/1000
-        #dz = DZ
         
         for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
             print ('\r steps: %d '%ii, end='',flush=True)
-            #z = dz + ii*STEPDZ 
-            #dfh['a1'] = dfh['a0']+dz*dfh['z']*np.sign(dfh['z'].values)
+
             dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi
             
             dfh['x1'] = dfh['a1']/dfh['z1']
@@ -148,7 +136,6 @@ class Clusterer(object):
             
             ss = StandardScaler()
             
-            #dfs = ss.fit_transform(dfh[['sina1','cosa1','z1','x1','x2']].values)
             dfs = ss.fit_transform(dfh[['sina1','cosa1','z1', 'z2']].values)
             
             dfs = np.multiply(dfs, SCALED_DISTANCE)
@@ -168,44 +155,17 @@ class Clusterer(object):
                 dfh['s1'] = dfh['s1'].astype('int64')
                 self.clusters = dfh['s1'].values
                 dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-
-        # dz = DZ
-        
-        # for ii in tqdm(range(-STEPS)):
-        #     #dz = dz - ii*STEPDZ
-        #     #dfh['a1'] = dfh['a0']+dz*dfh['z']*np.sign(dfh['z'].values)
-        #     dfh['a1'] = dfh['a0'] + (rr + 0.05*rr**2)*ii/180*np.pi
-        #     dfh['x1'] = dfh['a1']/dfh['z1']
-        #     dfh['x2'] = 1/dfh['z1']
-        #     dfh['sina1'] = np.sin(dfh['a1'])
-        #     dfh['cosa1'] = np.cos(dfh['a1'])
-            
-        #     ss = StandardScaler()
-        #     #dfs = ss.fit_transform(dfh[['sina1','cosa1','z1','x1','x2']].values)
-        #     dfs = ss.fit_transform(dfh[['sina1','cosa1','z1', 'z2']].values)
-        #     dfs = np.multiply(dfs, SCALED_DISTANCE)
-        #     self.clusters = DBSCAN(eps=0.0033-ii*STEPEPS,min_samples=1,metric='euclidean', n_jobs=-1).fit(dfs).labels_
-
-        #     dfh['s2'] = self.clusters
-        #     dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
-        #     maxs1 = dfh['s1'].max()
-     
-        #     cond = np.where(dfh['N2'].values>dfh['N1'].values  )
-        #     s1 = dfh['s1'].values
-        #     s1[cond] = dfh['s2'].values[cond]+maxs1
-        #     dfh['s1'] = s1
-        #     dfh['s1'] = dfh['s1'].astype('int64')
-        #     dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
         return dfh['s1'].values
 
-    def predict(self, hits): 
+    def predict(self, hits, cartesian=False): 
         self.clusters = self._init(hits)        
-        X = self._preprocess(hits) 
             
         labels = np.unique(self.clusters)
         self._eliminate_outliers(labels)
-        max_len = np.max(self.clusters)
-        self.clusters[self.clusters==0] = DBSCAN(eps=0.0075,min_samples=1,algorithm='kd_tree', n_jobs=8).fit(X[self.clusters==0]).labels_+max_len
+        if cartesian is True:
+            X = self._preprocess(hits) 
+            max_len = np.max(self.clusters)
+            self.clusters[self.clusters==0] = DBSCAN(eps=0.0075,min_samples=1,algorithm='kd_tree', n_jobs=-1).fit(X[self.clusters==0]).labels_+max_len
         
         return self.clusters
 
@@ -295,7 +255,7 @@ def run_single_threaded_training(skip, nevents):
 
         # Re-run our clustering algorithm on the remaining hits
         model2 = Clusterer()
-        labels2 = model2.predict(hits2)
+        labels2 = model2.predict(hits2, True)
         labels2[labels2 == 0] = 0 - len(labels) - 1
         labels2 = labels2 + len(labels) + 1
         # Expand labels2 to include a zero(0) entry for all hits that were removed

@@ -9,7 +9,7 @@ def extend(submission,hits):
 
 		for angle in range(-180,180,1):
 
-		    print ('\r %f'%angle, end='',flush=True)
+		    print ('\r %f '%angle, end='',flush=True)
 		    #df1 = df.loc[(df.arctan2>(angle-0.5)/180*np.pi) & (df.arctan2<(angle+0.5)/180*np.pi)]
 		    df1 = df.loc[(df.arctan2>(angle-1.0)/180*np.pi) & (df.arctan2<(angle+1.0)/180*np.pi)]
 
