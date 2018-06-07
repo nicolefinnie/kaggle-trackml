@@ -21,8 +21,9 @@ from extension import extend
 import cone_slicing as cone
 
 RZ_SCALES = [0.4, 1.6, 0.5]
-SCALED_DISTANCE = [1, 1, 0.3, 0.3]
+SCALED_DISTANCE = [1, 1, 0.5, 0.125, 0.01, 0.01]
 DBSCAN_GLOBAL_EPS = 0.0075
+DBSCAN_LOCAL_EPS = 0.0033
 
 STEPRR = 0.03
 STEPEPS = 0.0000015
@@ -31,10 +32,13 @@ THRESHOLD_MIN = 5
 THRESHOLD_MAX = 30
 EXTENSION_ATTEMPT = 8
 
+print('Feature sina1, cosa1, z1, z2, xd, yd in 3D')
+
 print('rz scales: ' + str(RZ_SCALES))
 print('scaled distance: ' + str(SCALED_DISTANCE))
 print('steprr: ' + str(STEPRR))
 print('stepeps: ' + str(STEPEPS))
+print('local eps: ' + str(DBSCAN_LOCAL_EPS))
 print('steps: ' + str(STEPS))
 print('threshold min: ' + str(THRESHOLD_MIN))
 print('threshold max: ' + str(THRESHOLD_MAX))
@@ -58,24 +62,6 @@ class DBScanClusterer(object):
         labels = cl.fit_predict(X)
         
         return labels
-
-# class HDBScanClusterer(object):
-    
-#     def __init__(self):
-#         self.rz_scales = RZ_SCALES
-    
-#     def _preprocess(self, hits):
-#         ss = StandardScaler()
-#         X = ss.fit_transform(hits[['x', 'y', 'z']].values)
-#         return X
-    
-#     def predict(self, hits):
-#         X = self._preprocess(hits)
-#         LEAF_SIZE = 50
-#         cl = hdbscan.HDBSCAN(min_samples=1,min_cluster_size=5,cluster_selection_method='leaf',metric='braycurtis',leaf_size=LEAF_SIZE,approx_min_span_tree=False)
-#         labels = cl.fit_predict(X) + 1
-        
-#         return labels
 
 
 class Clusterer(object):
@@ -117,13 +103,18 @@ class Clusterer(object):
         return X
 
     def _init(self, dfh):
-        dfh['r'] = np.sqrt(dfh.x**2+dfh.y**2+dfh.z**2)
-        dfh['rt'] = np.sqrt(dfh.x**2+dfh.y**2)
+        dfh['d'] = np.sqrt(dfh.x**2+dfh.y**2+dfh.z**2)
+        dfh['r'] = np.sqrt(dfh.x**2+dfh.y**2)
         dfh['a0'] = np.arctan2(dfh.y,dfh.x)
-        dfh['z1'] = dfh['z']/dfh['rt'] 
-        dfh['z2'] = dfh['z']/dfh['r']    
-        rr = dfh['rt']/1000
-        
+        dfh['z1'] = dfh['z']/dfh['r'] 
+        dfh['z2'] = dfh['z']/dfh['d']    
+        rr = dfh['r']/1000
+        dfh['rd'] = dfh['r']/dfh['d']
+        dfh['xy'] = dfh.x/dfh.y
+        dfh['xd'] = dfh.x/dfh['d']
+        dfh['yd'] = dfh.y/dfh['d']
+
+
         for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
             print ('\r steps: %d '%ii, end='',flush=True)
 
@@ -136,10 +127,10 @@ class Clusterer(object):
             
             ss = StandardScaler()
             
-            dfs = ss.fit_transform(dfh[['sina1','cosa1','z1', 'z2']].values)
+            dfs = ss.fit_transform(dfh[['sina1','cosa1','z1', 'z2', 'xd', 'yd']].values)
             
             dfs = np.multiply(dfs, SCALED_DISTANCE)
-            self.clusters = DBSCAN(eps=0.0033-ii*STEPEPS,min_samples=1,metric='euclidean', n_jobs=-1).fit(dfs).labels_
+            self.clusters = DBSCAN(eps=DBSCAN_LOCAL_EPS-ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
 
             if ii==-STEPS:
                 dfh['s1']=self.clusters
@@ -165,7 +156,7 @@ class Clusterer(object):
         if cartesian is True:
             X = self._preprocess(hits) 
             max_len = np.max(self.clusters)
-            self.clusters[self.clusters==0] = DBSCAN(eps=0.0075,min_samples=1,algorithm='kd_tree', n_jobs=-1).fit(X[self.clusters==0]).labels_+max_len
+            self.clusters[self.clusters==0] = DBSCAN(eps=DBSCAN_GLOBAL_EPS,min_samples=1,algorithm='kd_tree', n_jobs=-1).fit(X[self.clusters==0]).labels_+max_len
         
         return self.clusters
 
