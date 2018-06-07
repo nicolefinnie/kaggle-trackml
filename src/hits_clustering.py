@@ -31,6 +31,8 @@ STEPS = 100
 THRESHOLD_MIN = 5
 THRESHOLD_MAX = 30
 EXTENSION_ATTEMPT = 8
+MIN_CONE_TRACK_LENGTH = 2
+MAX_CONE_TRACK_LENGTH = 3
 
 print('Feature sina1, cosa1, z1, z2, xd, yd in 3D')
 
@@ -43,25 +45,8 @@ print('steps: ' + str(STEPS))
 print('threshold min: ' + str(THRESHOLD_MIN))
 print('threshold max: ' + str(THRESHOLD_MAX))
 print('extension attempt: ' + str(EXTENSION_ATTEMPT))
-
-
-class DBScanClusterer(object):
-    
-    def __init__(self):
-        self.eps = DBSCAN_GLOBAL_EPS
-    
-    def _preprocess(self, hits):
-        ss = StandardScaler()
-        X = ss.fit_transform(hits[['x', 'y', 'z']].values)
-        return X
-    
-    def predict(self, hits):
-        X = self._preprocess(hits)
-        
-        cl = DBSCAN(eps=self.eps, min_samples=3, algorithm='kd_tree')
-        labels = cl.fit_predict(X)
-        
-        return labels
+print('minimum cone slice track length: ' + str(MIN_CONE_TRACK_LENGTH))
+print('maximum cone slice track length: ' + str(MAX_CONE_TRACK_LENGTH))
 
 
 class Clusterer(object):
@@ -184,44 +169,14 @@ def run_single_threaded_training(skip, nevents):
 
     for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=skip, nevents=nevents):
 
-        if False:
-            #model = Clusterer()
-            #labels = model.predict(hits)
-            #xseed_length = 5
-            #xmy_volumes = [7, 8, 9]
-            #labels = sd.filter_invalid_tracks(labels, hits, xmy_volumes, xseed_length)
+        # Cone slicing.
+        labels_cone = cone.slice_cones(hits, MIN_CONE_TRACK_LENGTH, MAX_CONE_TRACK_LENGTH)
+        labels_cone = sd.renumber_labels(labels_cone)
+        one_submission = create_one_event_submission(event_id, hits, labels_cone)
+        score = score_event(truth, one_submission)
+        print("Cone slice score for event %d: %.8f" % (event_id, score))
 
-            labels = cone.slice_cones(hits, delta_angle=1.0)
-            labels = sd.renumber_labels(labels)
-            one_submission = create_one_event_submission(event_id, hits, labels)
-            score = score_event(truth, one_submission)
-            print("Cone slice score for event %d: %.8f" % (event_id, score))
-
-            hits1a = hits.copy(deep=True)
-            drop_indices = np.where(labels != 0)[0]
-            hits1a = hits1a.drop(hits1a.index[drop_indices])
-            #hits1a = hits1a.reset_index(drop=True)
-
-            # Use helix unrolling on the remaining tracks
-            model = Clusterer()
-            labels1a = model.predict(hits1a)
-            #labels1a = cone.slice_cones(hits1a)
-            labels1a_x = hack_one_last_run(labels, labels1a, hits1a)
-            one_submission = create_one_event_submission(event_id, hits, labels1a_x)
-            score = score_event(truth, one_submission)
-            print("Score for unroll remainders: %.8f" % (score))
-            labels1a[labels1a == 0] = 0 - len(labels) - 1
-            labels1a = labels1a + len(labels) + 1
-
-            labels1b = np.copy(labels)
-            labels1b[labels1b == 0] = labels1a
-            one_submission = create_one_event_submission(event_id, hits, labels1b)
-            score = score_event(truth, one_submission)
-            print("Merged score for event %d: %.8f" % (event_id, score))
-
-            # ORIG CODE BELOW...
-
-        # Track pattern recognition
+        # Helix unrolling track pattern recognition
         model = Clusterer()
         labels = model.predict(hits)
 
@@ -229,7 +184,7 @@ def run_single_threaded_training(skip, nevents):
         one_submission = create_one_event_submission(event_id, hits, labels)
    
         score = score_event(truth, one_submission)
-        print("Original score for event %d: %.8f" % (event_id, score))
+        print("Unroll helix score for event %d: %.8f" % (event_id, score))
 
         # Make sure max track ID is not larger than length of labels list.
         labels = sd.renumber_labels(labels)
@@ -237,7 +192,12 @@ def run_single_threaded_training(skip, nevents):
         # Filter out any tracks that do not originate from volumes 7, 8, or 9
         seed_length = 5
         my_volumes = [7, 8, 9]
+        #sd.count_truth_track_seed_hits(labels, truth, seed_length, print_results=True)
         valid_labels = sd.filter_invalid_tracks(labels, hits, my_volumes, seed_length)
+        #sd.count_truth_track_seed_hits(valid_labels, truth, seed_length, print_results=True)
+        one_submission = create_one_event_submission(event_id, hits, valid_labels)
+        score = score_event(truth, one_submission)
+        print("Filtered unroll helix score for event %d: %.8f" % (event_id, score))
 
         # Make a copy of the hits, removing all hits from valid_labels
         hits2 = hits.copy(deep=True)
@@ -255,26 +215,6 @@ def run_single_threaded_training(skip, nevents):
         # score = score_event(truth, one_submission)
         # print("Score for unroll 2: %.8f" % (score))
 
-        # # Re-run our clustering algorithm on the remaining hits
-        # model2a = DBScanClusterer()
-        # labels2a = model2a.predict(hits2)
-        # labels2a = labels2a + len(labels) + 1
-        # # Expand labels2 to include a zero(0) entry for all hits that were removed
-        # labels2a_x = hack_one_last_run(labels, labels2a, hits2)
-        # one_submission = create_one_event_submission(event_id, hits, labels2a_x)
-        # score = score_event(truth, one_submission)
-        # print("Score for dbscan 2: %.8f" % (score))
-
-        # # Re-run our clustering algorithm on the remaining hits
-        # model2b = HDBScanClusterer()
-        # labels2b = model2b.predict(hits2)
-        # labels2b = labels2b + len(labels) + 1
-        # # Expand labels2 to include a zero(0) entry for all hits that were removed
-        # labels2b_x = hack_one_last_run(labels, labels2b, hits2)
-        # one_submission = create_one_event_submission(event_id, hits, labels2b_x)
-        # score = score_event(truth, one_submission)
-        # print("Score for hdbscan 2: %.8f" % (score))
-
         # Create final track labels, merging those tracks found in the first and second passes
         labels3 = np.copy(valid_labels)
         labels3[labels3 == 0] = labels2
@@ -283,7 +223,13 @@ def run_single_threaded_training(skip, nevents):
         one_submission = create_one_event_submission(event_id, hits, labels3)
         # Score for the event
         score = score_event(truth, one_submission)
-        print("2-pass Score for event %d: %.8f" % (event_id, score))
+        print("2-pass helix unroll score for event %d: %.8f" % (event_id, score))
+
+        # Merge/ensemble cone slicing and helix unrolling tracks
+        labels4 = sd.merge_tracks(labels3, labels_cone)
+        one_submission = create_one_event_submission(event_id, hits, labels4)
+        score = score_event(truth, one_submission)
+        print("Merged cone+helix score for event %d: %.8f" % (event_id, score))
 
         for i in range(EXTENSION_ATTEMPT): 
             one_submission = extend(one_submission, hits)
@@ -328,6 +274,10 @@ if __name__ == '__main__':
 
             print('Event ID: ', event_id)
 
+            # Cone slicing.
+            labels_cone = cone.slice_cones(hits, MIN_CONE_TRACK_LENGTH, MAX_CONE_TRACK_LENGTH)
+            labels_cone = sd.renumber_labels(labels_cone)
+
             # Track pattern recognition 
             model = Clusterer()
             labels = model.predict(hits)
@@ -353,8 +303,11 @@ if __name__ == '__main__':
             labels3 = np.copy(valid_labels)
             labels3[labels3 == 0] = labels2
 
+            # Merge/ensemble cone slicing and helix unrolling tracks
+            labels4 = sd.merge_tracks(labels3, labels_cone)
+
             # Prepare submission for an event
-            one_submission = create_one_event_submission(event_id, hits, labels3)
+            one_submission = create_one_event_submission(event_id, hits, labels4)
 
             for i in range(EXTENSION_ATTEMPT): 
                 one_submission = extend(one_submission, hits)

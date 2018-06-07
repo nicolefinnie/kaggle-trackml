@@ -44,7 +44,17 @@ class DBScanClusterer(object):
         
         return labels
 
-def do_one_slice(df, labels, angle, delta_angle):
+def do_one_slice(df, labels, min_track_length, max_track_length, angle, delta_angle):
+    # Scores of cone slicing combined with helix unrolling
+    # max_track_length=20 --> 0.5398
+    # max_track_length=15 --> 0.5432
+    # max_track_length=12 --> 0.5447
+    # max_track_length=10 --> 0.5452
+    # max_track_length=8  --> 0.5460
+    # max_track_length=6  --> 0.5467
+    # max_track_length=4  --> 0.5468
+    # max_track_length=3  --> 0.5469
+    # max_track_length=2  --> 0.5465
     # Perform slice on input hits
     df1 = df.loc[(df.arctan2>(angle - delta_angle)/180*np.pi) & (df.arctan2<(angle + delta_angle)/180*np.pi)]
 
@@ -70,18 +80,7 @@ def do_one_slice(df, labels, angle, delta_angle):
     tracks[tracks != 0] = tracks[tracks != 0] + max_track
     track_ids = list(np.unique(tracks))
     num_track_ids = len(track_ids)
-    min_length=2
     min_length_after_extension=2
-    # max_length=20 --> 0.5398
-    # max_length=15 --> 0.5432
-    # max_length=12 --> 0.5447
-    # max_length=10 --> 0.5452
-    # max_length=8  --> 0.5460
-    # max_length=6  --> 0.5467
-    # max_length=4  --> 0.5468
-    # max_length=3  --> 0.5469
-    # max_length=2  --> 0.5465
-    max_length=3
     max_length_after_extension=30
 
     for i in range(num_track_ids):
@@ -89,10 +88,10 @@ def do_one_slice(df, labels, angle, delta_angle):
         if p==0: continue
 
         idx = np.where(tracks==p)[0]
-        if len(idx)<min_length:
+        if len(idx)<min_track_length:
             tracks[tracks == p] = 0
             continue
-        if len(idx)>max_length:
+        if len(idx)>max_track_length:
             tracks[tracks == p] = 0
             continue
 
@@ -159,7 +158,7 @@ def do_one_slice(df, labels, angle, delta_angle):
 
     return labels
 
-def slice_cones(hits, delta_angle=1.0):
+def slice_cones(hits, min_track_length, max_track_length, delta_angle=1.0):
     labels = np.zeros((len(hits)))
     df = hits.copy(deep=True)
     df = df.assign(d = np.sqrt( df.x**2 + df.y**2 + df.z**2 ))
@@ -171,16 +170,12 @@ def slice_cones(hits, delta_angle=1.0):
         num_hits = len(df1)
         # Dynamically adjust the delta based on how many hits are found
         if num_hits > 1000:
-            labels = do_one_slice(df, labels, angle-0.6, 0.4)
-            labels = do_one_slice(df, labels, angle-0.2, 0.4)
-            labels = do_one_slice(df, labels, angle+0.2, 0.4)
-            labels = do_one_slice(df, labels, angle+0.6, 0.4)
-        elif num_hits > 999:
-            labels = do_one_slice(df, labels, angle-0.5, 0.5)
-            labels = do_one_slice(df, labels, angle, 0.5)
-            labels = do_one_slice(df, labels, angle+0.5, 0.5)
+            labels = do_one_slice(df, labels, min_track_length, max_track_length, angle-0.6, 0.4)
+            labels = do_one_slice(df, labels, min_track_length, max_track_length, angle-0.2, 0.4)
+            labels = do_one_slice(df, labels, min_track_length, max_track_length, angle+0.2, 0.4)
+            labels = do_one_slice(df, labels, min_track_length, max_track_length, angle+0.6, 0.4)
         else:
-            labels = do_one_slice(df, labels, angle, 1.0)
+            labels = do_one_slice(df, labels, min_track_length, max_track_length, angle, 1.0)
 
     labels = np.asarray([int(i) for i in labels])
     return labels
