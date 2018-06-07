@@ -146,3 +146,27 @@ def filter_invalid_tracks(labels, hits, valid_volumes, seed_length, print_info=F
         valid_labels[labels == rem_track] = rem_track
 
     return valid_labels
+
+
+def merge_tracks(labels1, labels2):
+    """ Attempt merge - very simple, longest track wins
+    Needs improvement, i.e. length comparison is separate at each point
+    in the tracks, we should compare entire tracks at once, and have
+    some way of checking which track looks better.
+    """
+    labels_merged = np.copy(labels1)
+    labels_merged = renumber_labels(labels_merged)
+    max_track = np.amax(labels_merged)
+    labels2[labels2 != 0] = labels2[labels2 != 0] + max_track
+    for ix in range(len(labels_merged)):
+        if labels_merged[ix] == 0:
+            labels_merged[ix] = labels2[ix]
+        elif labels2[ix] != 0:
+            w1_track = labels_merged[ix]
+            w2_track = labels2[ix]
+            w1 = np.where(labels_merged == w1_track)[0]
+            w2 = np.where(labels2 == w2_track)[0]
+            if len(w2) > len(w1):
+                labels_merged[ix] = labels2[ix]
+    labels_merged = renumber_labels(labels_merged)
+    return labels_merged

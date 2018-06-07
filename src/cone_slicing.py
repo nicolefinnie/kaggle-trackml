@@ -44,6 +44,121 @@ class DBScanClusterer(object):
         
         return labels
 
+def do_one_slice(df, labels, angle, delta_angle):
+    # Perform slice on input hits
+    df1 = df.loc[(df.arctan2>(angle - delta_angle)/180*np.pi) & (df.arctan2<(angle + delta_angle)/180*np.pi)]
+
+    min_num_neighbours = len(df1)
+    if min_num_neighbours<4:
+        return labels
+
+    df1_indices = df1.index.values
+    for ix in df1_indices:
+        if labels[ix] == 0:
+            labels[ix] = -2
+
+    model = DBScanClusterer()
+    tracks = model.predict(df1.copy(deep=True))
+
+    x,y,z = df1.as_matrix(columns=['x', 'y', 'z']).T
+    r  = (x**2 + y**2)**0.5
+    r  = r/1000
+    a  = np.arctan2(y,x)
+    tree = KDTree(np.column_stack([a,r]), metric='euclidean')
+
+    max_track = np.amax(labels)
+    tracks[tracks != 0] = tracks[tracks != 0] + max_track
+    track_ids = list(np.unique(tracks))
+    num_track_ids = len(track_ids)
+    min_length=2
+    min_length_after_extension=2
+    # max_length=20 --> 0.5398
+    # max_length=15 --> 0.5432
+    # max_length=12 --> 0.5447
+    # max_length=10 --> 0.5452
+    # max_length=8  --> 0.5460
+    # max_length=6  --> 0.5467
+    # max_length=4  --> 0.5468
+    # max_length=3  --> 0.5469
+    # max_length=2  --> 0.5465
+    max_length=3
+    max_length_after_extension=30
+
+    for i in range(num_track_ids):
+        p = track_ids[i]
+        if p==0: continue
+
+        idx = np.where(tracks==p)[0]
+        if len(idx)<min_length:
+            tracks[tracks == p] = 0
+            continue
+        if len(idx)>max_length:
+            tracks[tracks == p] = 0
+            continue
+
+        if angle>0:
+            idx = idx[np.argsort( z[idx])]
+        else:
+            idx = idx[np.argsort(-z[idx])]
+
+        ## start and end points  ##
+        idx0,idx1 = idx[0],idx[-1]
+        a0 = a[idx0]
+        a1 = a[idx1]
+        r0 = r[idx0]
+        r1 = r[idx1]
+
+        da0 = a[idx[1]] - a[idx[0]]  #direction
+        dr0 = r[idx[1]] - r[idx[0]]
+        direction0 = np.arctan2(dr0,da0) 
+
+        da1 = a[idx[-1]] - a[idx[-2]]
+        dr1 = r[idx[-1]] - r[idx[-2]]
+        direction1 = np.arctan2(dr1,da1) 
+
+    
+        ## extend start point
+        ns = tree.query([[a0,r0]], k=min(20,min_num_neighbours), return_distance=False)
+        ns = np.concatenate(ns)
+        direction = np.arctan2(r0-r[ns],a0-a[ns])
+        ns = ns[(r0-r[ns]>0.01) &(np.fabs(direction-direction0)<0.04)]
+
+        for n in ns:
+            tracks[n] = p
+
+        ## extend end point
+        ns = tree.query([[a1,r1]], k=min(20,min_num_neighbours), return_distance=False)
+        ns = np.concatenate(ns)
+
+        direction = np.arctan2(r[ns]-r1,a[ns]-a1)
+        ns = ns[(r[ns]-r1>0.01) &(np.fabs(direction-direction1)<0.04)] 
+            
+        for n in ns:
+            tracks[n] = p
+
+        if len(idx)<min_length_after_extension:
+            tracks[tracks == p] = 0
+        if len(idx)>max_length_after_extension:
+            tracks[tracks == p] = 0
+
+    # Now we have tracks[], merge into global labels
+    # Simple merging - the winner is the longer track
+    trk_ix = 0
+    for ix in df1_indices:
+        if labels[ix] == -2:
+            labels[ix] = tracks[trk_ix]
+        else:
+            w1_track = labels[ix]
+            w2_track = tracks[trk_ix]
+            w1 = np.where(labels == w1_track)[0]
+            w2 = np.where(tracks == w2_track)[0]
+            if len(w2) > len(w1):
+                labels[ix] = tracks[trk_ix]
+            #print('OLD len: ' + str(len(w1)) + ', NEW len: ' + str(len(w2)))
+        trk_ix = trk_ix + 1
+
+    return labels
+
 def slice_cones(hits, delta_angle=1.0):
     labels = np.zeros((len(hits)))
     df = hits.copy(deep=True)
@@ -52,85 +167,20 @@ def slice_cones(hits, delta_angle=1.0):
     df = df.assign(arctan2 = np.arctan2(df.z, df.r))
 
     for angle in range(-180,180,1):
-
-        #print ('\n %f'%angle, end='',flush=True)
         df1 = df.loc[(df.arctan2>(angle - delta_angle)/180*np.pi) & (df.arctan2<(angle + delta_angle)/180*np.pi)]
+        num_hits = len(df1)
+        # Dynamically adjust the delta based on how many hits are found
+        if num_hits > 1000:
+            labels = do_one_slice(df, labels, angle-0.6, 0.4)
+            labels = do_one_slice(df, labels, angle-0.2, 0.4)
+            labels = do_one_slice(df, labels, angle+0.2, 0.4)
+            labels = do_one_slice(df, labels, angle+0.6, 0.4)
+        elif num_hits > 999:
+            labels = do_one_slice(df, labels, angle-0.5, 0.5)
+            labels = do_one_slice(df, labels, angle, 0.5)
+            labels = do_one_slice(df, labels, angle+0.5, 0.5)
+        else:
+            labels = do_one_slice(df, labels, angle, 1.0)
 
-        min_num_neighbours = len(df1)
-        if min_num_neighbours<4: continue
-
-        df1_indices = df1.index.values
-        #print('df1_indices: ' + str(df1_indices))
-        labels[df1_indices] = -2
-
-        model = DBScanClusterer()
-        tracks = model.predict(df1.copy(deep=True))
-
-        hit_ids = df1.hit_id.values
-        x,y,z = df1.as_matrix(columns=['x', 'y', 'z']).T
-        r  = (x**2 + y**2)**0.5
-        r  = r/1000
-        a  = np.arctan2(y,x)
-        tree = KDTree(np.column_stack([a,r]), metric='euclidean')
-
-        max_track = np.amax(labels)
-        tracks[tracks != 0] = tracks[tracks != 0] + max_track
-        track_ids = list(np.unique(tracks))
-        num_track_ids = len(track_ids)
-        min_length=3
-        #print('angle: ' + str(angle) + ', num_hits: ' + str(min_num_neighbours) + ', track_ids: ' + str(track_ids))
-
-        for i in range(num_track_ids):
-            p = track_ids[i]
-            if p==0: continue
-
-            idx = np.where(tracks==p)[0]
-            if len(idx)<min_length:
-                tracks[tracks == p] = 0
-                continue
-
-            if angle>0:
-                idx = idx[np.argsort( z[idx])]
-            else:
-                idx = idx[np.argsort(-z[idx])]
-
-            ## start and end points  ##
-            idx0,idx1 = idx[0],idx[-1]
-            a0 = a[idx0]
-            a1 = a[idx1]
-            r0 = r[idx0]
-            r1 = r[idx1]
-
-            da0 = a[idx[1]] - a[idx[0]]  #direction
-            dr0 = r[idx[1]] - r[idx[0]]
-            direction0 = np.arctan2(dr0,da0) 
-
-            da1 = a[idx[-1]] - a[idx[-2]]
-            dr1 = r[idx[-1]] - r[idx[-2]]
-            direction1 = np.arctan2(dr1,da1) 
-
-        
-            ## extend start point
-            ns = tree.query([[a0,r0]], k=min(20,min_num_neighbours), return_distance=False)
-            ns = np.concatenate(ns)
-            direction = np.arctan2(r0-r[ns],a0-a[ns])
-            ns = ns[(r0-r[ns]>0.01) &(np.fabs(direction-direction0)<0.04)]
-
-            for n in ns:
-                tracks[n] = p
-                #df.loc[ df.hit_id==hit_ids[n],'track_id' ] = p 
-
-            ## extend end point
-            ns = tree.query([[a1,r1]], k=min(20,min_num_neighbours), return_distance=False)
-            ns = np.concatenate(ns)
-
-            direction = np.arctan2(r[ns]-r1,a[ns]-a1)
-            ns = ns[(r[ns]-r1>0.01) &(np.fabs(direction-direction1)<0.04)] 
-                
-            for n in ns:
-                tracks[n] = p
-                #df.loc[ df.hit_id==hit_ids[n],'track_id' ] = p
-        # Now we have tracks[], merge into global labels
-        labels[labels == -2] = tracks
-    #print ('\n')
+    labels = np.asarray([int(i) for i in labels])
     return labels
