@@ -272,7 +272,7 @@ def run_single_threaded_training(skip, nevents):
         #FIXME NO MERGE
         one_submission = create_one_event_submission(event_id, hits, labels3)
         score = score_event(truth, one_submission)
-        print("Merged cone+helix score for event %d: %.8f" % (event_id, score))
+        #print("Merged cone+helix score for event %d: %.8f" % (event_id, score))
 
         for i in range(EXTENSION_ATTEMPT): 
             one_submission = extend(one_submission, hits)
