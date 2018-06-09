@@ -21,20 +21,20 @@ from extension import extend
 import cone_slicing as cone
 
 RZ_SCALES = [0.4, 1.6, 0.5]
-SCALED_DISTANCE = [1, 1, 0.5, 0.125, 0.01, 0.01]
+SCALED_DISTANCE = [1, 1, 0.5, 0.125, 0.01, 0.01, 0.001, 0.001]
 DBSCAN_GLOBAL_EPS = 0.0075
 DBSCAN_LOCAL_EPS = 0.0033
 
 STEPRR = 0.03
 STEPEPS = 0.0000015
-STEPS = 100
+STEPS = 120
 THRESHOLD_MIN = 5
 THRESHOLD_MAX = 30
 EXTENSION_ATTEMPT = 8
 MIN_CONE_TRACK_LENGTH = 2
 MAX_CONE_TRACK_LENGTH = 3
 
-print('Feature sina1, cosa1, z1, z2, xd, yd in 3D')
+print('Feature sina1, cosa1, z1, z2, xd, yd, px, py  ')
 
 print('rz scales: ' + str(RZ_SCALES))
 print('scaled distance: ' + str(SCALED_DISTANCE))
@@ -45,8 +45,8 @@ print('steps: ' + str(STEPS))
 print('threshold min: ' + str(THRESHOLD_MIN))
 print('threshold max: ' + str(THRESHOLD_MAX))
 print('extension attempt: ' + str(EXTENSION_ATTEMPT))
-print('minimum cone slice track length: ' + str(MIN_CONE_TRACK_LENGTH))
-print('maximum cone slice track length: ' + str(MAX_CONE_TRACK_LENGTH))
+# print('minimum cone slice track length: ' + str(MIN_CONE_TRACK_LENGTH))
+# print('maximum cone slice track length: ' + str(MAX_CONE_TRACK_LENGTH))
 
 
 class Clusterer(object):
@@ -100,24 +100,29 @@ class Clusterer(object):
         dfh['yd'] = dfh.y/dfh['d']
 
 
-        for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
+        for ii in tqdm(np.arange(0, STEPS, 1)):
             print ('\r steps: %d '%ii, end='',flush=True)
 
             dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi
-            
-            dfh['x1'] = dfh['a1']/dfh['z1']
+            dfh['za1'] = dfh.z/dfh['a1']
             dfh['x2'] = 1/dfh['z1']
+            dfh['cur'] = np.absolute(dfh.r) / (dfh.r**2 + (dfh.z/dfh.a1)**2)
+            # parameter space
+            dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
+            dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
+            
+            
             dfh['sina1'] = np.sin(dfh['a1'])
             dfh['cosa1'] = np.cos(dfh['a1'])
             
             ss = StandardScaler()
             
-            dfs = ss.fit_transform(dfh[['sina1','cosa1','z1', 'z2', 'xd', 'yd']].values)
+            dfs = ss.fit_transform(dfh[['sina1','cosa1','z1', 'z2', 'xd', 'yd', 'px', 'py']].values)
             
             dfs = np.multiply(dfs, SCALED_DISTANCE)
-            self.clusters = DBSCAN(eps=DBSCAN_LOCAL_EPS-ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+            self.clusters = DBSCAN(eps=DBSCAN_LOCAL_EPS + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
 
-            if ii==-STEPS:
+            if ii==0:
                 dfh['s1']=self.clusters
                 dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
             else:
@@ -131,6 +136,43 @@ class Clusterer(object):
                 dfh['s1'] = dfh['s1'].astype('int64')
                 self.clusters = dfh['s1'].values
                 dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+
+        for ii in tqdm(np.arange(0, STEPS, 1)):
+            print ('\r steps: %d '%ii, end='',flush=True)
+            
+            dfh['a0'] = np.arctan2(-dfh.x, dfh.y)
+            dfh['a1'] = dfh['a0'] - (rr + STEPRR*rr**2)*ii/180*np.pi
+            
+            dfh['za1'] = dfh.z/dfh['a1']
+            #dfh['x1'] = dfh['z1']/dfh['a1']
+            dfh['cur'] = np.absolute(dfh.r) / (dfh.r**2 + (dfh.z/dfh.a1)**2)
+                # parameter space
+            dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
+            dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
+
+
+            dfh['x2'] = 1/dfh['z1'] 
+            dfh['sina1'] = np.sin(dfh['a1'])
+            dfh['cosa1'] = np.cos(dfh['a1'])
+            dfh['xd'] = dfh.y/dfh['d']
+            dfh['yd'] = -dfh.x/dfh['d']
+            
+            ss = StandardScaler()
+            
+            dfs = ss.fit_transform(dfh[['sina1','cosa1','z1', 'z2', 'xd', 'yd', 'px', 'py']].values)
+            
+            dfs = np.multiply(dfs, SCALED_DISTANCE)
+            clusters = DBSCAN(eps=DBSCAN_LOCAL_EPS - ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+
+            dfh['s2'] = clusters
+            dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
+            maxs1 = dfh['s1'].max()
+            cond = np.where(dfh['N2'].values>dfh['N1'].values )
+            s1 = dfh['s1'].values
+            s1[cond] = dfh['s2'].values[cond]+maxs1
+            dfh['s1'] = s1
+            dfh['s1'] = dfh['s1'].astype('int64')
+            dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
         return dfh['s1'].values
 
     def predict(self, hits, cartesian=False): 
@@ -170,11 +212,11 @@ def run_single_threaded_training(skip, nevents):
     for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=skip, nevents=nevents):
 
         # Cone slicing.
-        labels_cone = cone.slice_cones(hits, MIN_CONE_TRACK_LENGTH, MAX_CONE_TRACK_LENGTH)
-        labels_cone = sd.renumber_labels(labels_cone)
-        one_submission = create_one_event_submission(event_id, hits, labels_cone)
-        score = score_event(truth, one_submission)
-        print("Cone slice score for event %d: %.8f" % (event_id, score))
+        # labels_cone = cone.slice_cones(hits, MIN_CONE_TRACK_LENGTH, MAX_CONE_TRACK_LENGTH)
+        # labels_cone = sd.renumber_labels(labels_cone)
+        # one_submission = create_one_event_submission(event_id, hits, labels_cone)
+        # score = score_event(truth, one_submission)
+        # print("Cone slice score for event %d: %.8f" % (event_id, score))
 
         # Helix unrolling track pattern recognition
         model = Clusterer()
@@ -226,8 +268,9 @@ def run_single_threaded_training(skip, nevents):
         print("2-pass helix unroll score for event %d: %.8f" % (event_id, score))
 
         # Merge/ensemble cone slicing and helix unrolling tracks
-        labels4 = sd.merge_tracks(labels3, labels_cone)
-        one_submission = create_one_event_submission(event_id, hits, labels4)
+        #labels4 = sd.merge_tracks(labels3, labels_cone)
+        #FIXME NO MERGE
+        one_submission = create_one_event_submission(event_id, hits, labels3)
         score = score_event(truth, one_submission)
         print("Merged cone+helix score for event %d: %.8f" % (event_id, score))
 
@@ -275,8 +318,8 @@ if __name__ == '__main__':
             print('Event ID: ', event_id)
 
             # Cone slicing.
-            labels_cone = cone.slice_cones(hits, MIN_CONE_TRACK_LENGTH, MAX_CONE_TRACK_LENGTH)
-            labels_cone = sd.renumber_labels(labels_cone)
+            # labels_cone = cone.slice_cones(hits, MIN_CONE_TRACK_LENGTH, MAX_CONE_TRACK_LENGTH)
+            # labels_cone = sd.renumber_labels(labels_cone)
 
             # Track pattern recognition 
             model = Clusterer()
@@ -304,10 +347,13 @@ if __name__ == '__main__':
             labels3[labels3 == 0] = labels2
 
             # Merge/ensemble cone slicing and helix unrolling tracks
-            labels4 = sd.merge_tracks(labels3, labels_cone)
+            #labels4 = sd.merge_tracks(labels3, labels_cone)
 
+            #FIXME
             # Prepare submission for an event
-            one_submission = create_one_event_submission(event_id, hits, labels4)
+            #one_submission = create_one_event_submission(event_id, hits, labels4)
+            one_submission = create_one_event_submission(event_id, hits, labels3)
+
 
             for i in range(EXTENSION_ATTEMPT): 
                 one_submission = extend(one_submission, hits)
