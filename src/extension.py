@@ -103,13 +103,13 @@ def extend(df, do_swap=False, limit=0.04):
 
         num_hits = len(df1)
         # Dynamically adjust the delta based on how many hits are found
-        if num_hits > 1000:
+        if num_hits > 2000:
             df = _one_cone_slice(df, angle-0.6, 0.4, limit)
             df = _one_cone_slice(df, angle-0.2, 0.4, limit)
             df = _one_cone_slice(df, angle+0.2, 0.4, limit)
             df = _one_cone_slice(df, angle+0.6, 0.4, limit)
         else:
-            df = _one_cone_slice(df, angle, 1)
+            df = _one_cone_slice(df, angle, 1, limit)
            
     return df
 
