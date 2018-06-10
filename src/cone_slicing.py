@@ -16,22 +16,11 @@ class DBScanClusterer(object):
         self.eps=eps
 
     def _preprocess(self, hits):
-        hits['r'] = np.sqrt(hits.x**2+hits.y**2+hits.z**2)
-        hits['rt'] = np.sqrt(hits.x**2+hits.y**2)
-        hits['a1'] = np.arctan2(hits.y,hits.x)
-        hits['z1'] = hits['z']/hits['rt'] 
-        hits['z2'] = hits['z']/hits['r']    
-
-        hits['x1'] = hits['a1']/hits['z1']
-        hits['x2'] = 1/hits['z1']
-        hits['sina1'] = np.sin(hits['a1'])
-        hits['cosa1'] = np.cos(hits['a1'])
-        
         ss = StandardScaler()
-        tmp_scaled = [0.15, 0.15, 0.1, 0.1, 0.1]
-        #tmp_scaled = [0.2, 0.2, 0.1, 0.1]
-        X = ss.fit_transform(hits[['sina1','cosa1','z1','x1','x2']].values)
-        #X = ss.fit_transform(hits[['sina1','cosa1','z1', 'z2']].values)
+        #tmp_scaled = [0.15, 0.15, 0.1, 0.1, 0.1]
+        #X = ss.fit_transform(hits[['sina1','cosa1','z1','x1','x2']].values)
+        tmp_scaled = [0.13, 0.13, 0.05, 0.05]
+        X = ss.fit_transform(hits[['sina1','cosa1','z1', 'z2']].values)
         
         #X = np.multiply(X, SCALED_DISTANCE)
         X = np.multiply(X, tmp_scaled)
@@ -45,16 +34,6 @@ class DBScanClusterer(object):
         return labels
 
 def do_one_slice(df, labels, min_track_length, max_track_length, angle, delta_angle):
-    # Scores of cone slicing combined with helix unrolling
-    # max_track_length=20 --> 0.5398
-    # max_track_length=15 --> 0.5432
-    # max_track_length=12 --> 0.5447
-    # max_track_length=10 --> 0.5452
-    # max_track_length=8  --> 0.5460
-    # max_track_length=6  --> 0.5467
-    # max_track_length=4  --> 0.5468
-    # max_track_length=3  --> 0.5469
-    # max_track_length=2  --> 0.5465
     # Perform slice on input hits
     df1 = df.loc[(df.arctan2>(angle - delta_angle)/180*np.pi) & (df.arctan2<(angle + delta_angle)/180*np.pi)]
 
@@ -63,9 +42,6 @@ def do_one_slice(df, labels, min_track_length, max_track_length, angle, delta_an
         return labels
 
     df1_indices = df1.index.values
-    for ix in df1_indices:
-        if labels[ix] == 0:
-            labels[ix] = -2
 
     model = DBScanClusterer()
     tracks = model.predict(df1.copy(deep=True))
@@ -109,18 +85,27 @@ def do_one_slice(df, labels, min_track_length, max_track_length, angle, delta_an
 
         da0 = a[idx[1]] - a[idx[0]]  #direction
         dr0 = r[idx[1]] - r[idx[0]]
-        direction0 = np.arctan2(dr0,da0) 
+        divisor0 = (da0**2+dr0**2)**0.5
+        if divisor0 == 0 : divisor0 = 1
+        direction0 = np.array([da0/divisor0,dr0/divisor0])  
 
         da1 = a[idx[-1]] - a[idx[-2]]
         dr1 = r[idx[-1]] - r[idx[-2]]
-        direction1 = np.arctan2(dr1,da1) 
+        divisor1 = (da1**2+dr1**2)**0.5
+        if divisor1 == 0 : divisor1 = 1
+        direction1 = np.array([da1/divisor1,dr1/divisor1]) 
 
-    
         ## extend start point
         ns = tree.query([[a0,r0]], k=min(20,min_num_neighbours), return_distance=False)
         ns = np.concatenate(ns)
-        direction = np.arctan2(r0-r[ns],a0-a[ns])
-        ns = ns[(r0-r[ns]>0.01) &(np.fabs(direction-direction0)<0.04)]
+        
+        da0ns = a0-a[ns]
+        dr0ns = r0-r[ns]
+        divisor0ns = (da0ns**2+dr0ns**2)**0.5
+        divisor0ns[divisor0ns == 0] = 1
+        direction = np.array([da0ns/divisor0ns,dr0ns/divisor0ns]) 
+
+        ns = ns[(r0-r[ns]>0.01) & (np.matmul(direction.T,direction0)>0.9991)]
 
         for n in ns:
             tracks[n] = p
@@ -128,10 +113,15 @@ def do_one_slice(df, labels, min_track_length, max_track_length, angle, delta_an
         ## extend end point
         ns = tree.query([[a1,r1]], k=min(20,min_num_neighbours), return_distance=False)
         ns = np.concatenate(ns)
+        da1ns = a[ns]-a1
+        dr1ns = r[ns]-r1
 
-        direction = np.arctan2(r[ns]-r1,a[ns]-a1)
-        ns = ns[(r[ns]-r1>0.01) &(np.fabs(direction-direction1)<0.04)] 
-            
+        divisor1ns = (da1ns**2+dr1ns**2)**0.5
+        divisor1ns[divisor1ns == 0] = 1
+        direction = np.array([da1ns/divisor1ns,dr1ns/divisor1ns]) 
+
+        ns = ns[(r[ns]-r1>0.01) & (np.matmul(direction.T,direction1)>0.9991)] 
+
         for n in ns:
             tracks[n] = p
 
@@ -144,7 +134,7 @@ def do_one_slice(df, labels, min_track_length, max_track_length, angle, delta_an
     # Simple merging - the winner is the longer track
     trk_ix = 0
     for ix in df1_indices:
-        if labels[ix] == -2:
+        if labels[ix] == 0:
             labels[ix] = tracks[trk_ix]
         else:
             w1_track = labels[ix]
@@ -158,13 +148,26 @@ def do_one_slice(df, labels, min_track_length, max_track_length, angle, delta_an
 
     return labels
 
-def slice_cones(hits, min_track_length, max_track_length, delta_angle=1.0):
+def slice_cones(hits, min_track_length, max_track_length, do_swap=False, delta_angle=1.0):
     labels = np.zeros((len(hits)))
     df = hits.copy(deep=True)
+    if do_swap:
+        df = df.assign(xtmp = df.y)
+        df = df.assign(y = -df.x)
+        df = df.assign(x = df.xtmp)
     df = df.assign(d = np.sqrt( df.x**2 + df.y**2 + df.z**2 ))
     df = df.assign(r = np.sqrt( df.x**2 + df.y**2))
     df = df.assign(arctan2 = np.arctan2(df.z, df.r))
+    df = df.assign(a1 = np.arctan2(df.y, df.x))
+    df = df.assign(z1 = df.z / df.r)
+    df = df.assign(z2 = df.z / df.d)
+    df = df.assign(x1 = df.a1 / df.z1)
+    df = df.assign(x2 = 1 / df.z1)
+    df = df.assign(sina1 = np.sin(df.a1))
+    df = df.assign(cosa1 = np.cos(df.a1))
 
+    uniq_list = np.unique(df.arctan2.values)
+    #print('uniq arctan head: ' + str(uniq_list[0:5]) + ', tail: ' + str(uniq_list[-5:]))
     for angle in range(-180,180,1):
         df1 = df.loc[(df.arctan2>(angle - delta_angle)/180*np.pi) & (df.arctan2<(angle + delta_angle)/180*np.pi)]
         num_hits = len(df1)
@@ -176,6 +179,7 @@ def slice_cones(hits, min_track_length, max_track_length, delta_angle=1.0):
             labels = do_one_slice(df, labels, min_track_length, max_track_length, angle+0.6, 0.4)
         else:
             labels = do_one_slice(df, labels, min_track_length, max_track_length, angle, 1.0)
+        #labels = do_one_slice(df, labels, min_track_length, max_track_length, angle, 1.0)
 
     labels = np.asarray([int(i) for i in labels])
     return labels
