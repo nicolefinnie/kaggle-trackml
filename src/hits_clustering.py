@@ -363,10 +363,9 @@ if __name__ == '__main__':
 
             # Make sure max track ID is not larger than length of labels list.
             labels = sd.renumber_labels(labels)
-
-            for i in range(EXTENSION_ATTEMPT):          
-                labels = extend_labels(labels, hits, do_swap=i%2==1, limit=EXTENSION_LIMIT)
-
+            for i in range(EXTENSION_ATTEMPT):      
+                limit = EXTENSION_LIMIT_START + EXTENSION_LIMIT_INTERVAL*i
+                labels = extend_labels(labels, hits, do_swap=i%2==1, limit=limit)
 
             # Filter out any tracks that do not originate from volumes 7, 8, or 9
             seed_length = 5
@@ -396,9 +395,9 @@ if __name__ == '__main__':
 
 
             for i in range(EXTENSION_ATTEMPT): 
-                one_submission = extend_submission(one_submission, hits, do_swap=i%2==1, limit=EXTENSION_LIMIT)
+                limit = EXTENSION_LIMIT_START + EXTENSION_LIMIT_INTERVAL*i
+                one_submission = extend_submission(one_submission, hits, do_swap=i%2==1, limit=limit)
 
-        
             test_dataset_submissions.append(one_submission)
             
 
