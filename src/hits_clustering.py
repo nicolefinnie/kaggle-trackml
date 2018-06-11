@@ -27,6 +27,7 @@ SCALED_DISTANCE_2 = [1,       1,       0.5, 0.01]
 FEATURE_MATRIX_2 = ['sina1', 'cosa1', 'z1', 'z1a1' ]
 
 
+
 DBSCAN_GLOBAL_EPS = 0.0075
 DBSCAN_LOCAL_EPS = 0.0033
 
@@ -151,7 +152,7 @@ class Clusterer(object):
                 dfh['s2'] = self.clusters
                 dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
                 maxs1 = dfh['s1'].max()
-                cond = np.where(dfh['N2'].values>dfh['N1'].values )
+                cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
                 s1 = dfh['s1'].values
                 s1[cond] = dfh['s2'].values[cond]+maxs1
                 dfh['s1'] = s1
@@ -282,9 +283,9 @@ def run_single_threaded_training(skip, nevents):
         #sd.count_truth_track_seed_hits(labels, truth, seed_length, print_results=True)
         valid_labels = sd.filter_invalid_tracks(labels, hits, my_volumes, seed_length)
         #sd.count_truth_track_seed_hits(valid_labels, truth, seed_length, print_results=True)
-        one_submission = create_one_event_submission(event_id, hits, valid_labels)
-        score = score_event(truth, one_submission)
-        print("Filtered unroll helix score for event %d: %.8f" % (event_id, score))
+        #one_submission = create_one_event_submission(event_id, hits, valid_labels)
+        #score = score_event(truth, one_submission)
+        #print("Filtered unroll helix score for event %d: %.8f" % (event_id, score))
 
         # Make a copy of the hits, removing all hits from valid_labels
         hits2 = hits.copy(deep=True)
@@ -324,15 +325,12 @@ def run_single_threaded_training(skip, nevents):
             labels3 = extend_labels(labels3, hits, do_swap=i%2==1, limit=(limit))
 
         one_submission = create_one_event_submission(event_id, hits, labels3)
-
-
-        # for i in range(EXTENSION_ATTEMPT): 
-        #     limit = EXTENSION_LIMIT_START + EXTENSION_LIMIT_INTERVAL*i
-        #     one_submission = extend_submission(one_submission, hits, do_swap=i%2==1, limit=limit)
         score = score_event(truth, one_submission)
 
         print("2nd backfitting for event %d: %.8f" % (event_id, score))
-        sd.count_truth_track_seed_hits(labels, truth, seed_length, print_results=True)
+
+        valid_labels = sd.filter_invalid_tracks(labels3, hits, my_volumes, seed_length)
+        sd.count_truth_track_seed_hits(labels3, truth, seed_length, print_results=True)
        
         dataset_submissions.append(one_submission)
         dataset_scores.append(score)
