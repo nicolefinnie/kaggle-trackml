@@ -226,6 +226,82 @@ def hack_one_last_run(labels, labels2, hits2):
         fix_ix = fix_ix + 1
     return labels2_x
 
+def run_predictions(all_labels, all_hits, model, model_parameters, unmatched_only=True, merge_labels=True, filter_hits=True, track_extension=True):
+    """ Run a round of predictions on all or a subset of remaining hits.
+    Parameters:
+      all_labels: Input np array of labeled tracks, where the index in all_labels matches
+        the index of the corresponding hit in the all_hits dataframe. Each value contains
+        either 0 (if the corresponding hit is not associated with any track), or a unique
+        track ID (all hits that form the same track will have the same track ID).
+      all_hits: Dataframe containing all the hits to be predicted for an event.
+      model: The model that predictions will be run on. This model must expose a
+        'predict()' method that accepts the input hits to predict as the first parameter,
+        and the input 'model_parameters' as the second input parameter.
+      model_parameters: Additional input parameters for the model performing predictions.
+      unmatched_only: True iff only unmatched hits should be predicted. Unmatched hits are
+        determined from the all_labels input array, where an unmatched hit contains a
+        track ID of 0. False for this parameter means that all hits in the all_hits
+        dataframe will be used to make predictions.
+      merge_labels: True iff the output from this method should be a merged list of
+        labels just predicted, as well as the existing input all_labels.
+      filter_hits: True iff the predicted hits should be filter to those known to be
+        high quality, i.e. that have a specific minimum track length, and that
+        contain hits in volumes 7, 8, or 9. False for this parameter means that no
+        filtering will be performed.
+      track_extension: True iff found tracks should be extended (both ways) to lengthen
+        any found tracks. Track extension is performed from the full list of tracks, i.e.
+        after mergeing (if mergeing was performed).
+
+    Returns: The new np array of predicted labels/tracks, as well as the unfiltered version.
+    """
+    hits_to_predict = all_hits
+
+    if unmatched_only:
+        # Make a copy of the hits, removing all hits from valid_labels
+        hits_to_predict = all_hits.copy(deep=True)
+        drop_indices = np.where(all_labels != 0)[0]
+        hits_to_predict = hits_to_predict.drop(hits_to_predict.index[drop_indices])
+
+    # Run predictions on the input model
+    new_labels = model.predict(hits_to_predict, model_parameters)
+
+    # Make sure max track ID is not larger than length of labels list.
+    new_labels = sd.renumber_labels(new_labels)
+
+    # If only predicting on unmatched hits, add any new predicted tracks directly
+    # into the output labels. Otherwise, if mergeing is desired, merge the new
+    # tracks into the existing/input tracks. Otherwise, just return the newly
+    # predicted output labels.
+    if unmatched_only:
+        labels_out = np.copy(all_labels)
+        new_labels[new_labels == 0] = 0 - len(all_labels) - 1
+        new_labels = new_labels + len(all_labels) + 1
+        labels_out[labels_out == 0] = new_labels
+    elif merge_labels:
+        # Merge/ensemble cone slicing and helix unrolling tracks
+        labels_out = sd.merge_tracks(all_labels, new_labels)
+    else:
+        labels_out = new_labels
+
+    # If desired, extend tracks after any mergeing.
+    if track_extension:
+        for i in range(EXTENSION_ATTEMPT):
+            limit = EXTENSION_LIMIT_START + EXTENSION_LIMIT_INTERVAL*i
+            labels_out = extend_labels(labels_out, all_hits, do_swap=i%2==1, limit=(limit))
+
+    labels_out = sd.renumber_labels(labels_out)
+    unfiltered_labels = np.copy(labels_out)
+
+    if filter_hits:
+        # Filter out any tracks that do not originate from volumes 7, 8, or 9
+        seed_length = 5
+        my_volumes = [7, 8, 9]
+        labels_out = sd.filter_invalid_tracks(labels_out, all_hits, my_volumes, seed_length)
+        # Re-number all tracks so they are densely packed.
+        labels_out = sd.renumber_labels(labels_out)
+
+    return (labels_out, unfiltered_labels)
+
 def run_single_threaded_training(skip, nevents):
     path_to_train = "../input/train_1"
     dataset_submissions = []
@@ -246,92 +322,42 @@ def run_single_threaded_training(skip, nevents):
 
         # Helix unrolling track pattern recognition
         model = Clusterer()
-        #FIXME remove this code
-        #labels = model.predict(hits)
 
         label_file = 'event_' + str(event_id)+'_labels.csv'
         if os.path.exists(label_file):
             labels = pd.read_csv(label_file).label.values
         else:
-            labels = model.predict(hits)
+            # For the first run, we do not have an input array of labels/tracks.
+            model_parameters=False # For now, input parameter to model is 'secondpass'
+            (labels, unfiltered_labels) = run_predictions(None, hits, model, model_parameters, unmatched_only=False, merge_labels=False, filter_hits=True, track_extension=True)
             df = pd.DataFrame(labels)
             df.to_csv(label_file, index=False, header=['label'])
+
+            one_submission = create_one_event_submission(event_id, hits, unfiltered_labels)
+            score = score_event(truth, one_submission)
+            print("Unfiltered 1st pass score for event %d: %.8f" % (event_id, score))
         
         # Score for the event
         one_submission = create_one_event_submission(event_id, hits, labels)
-   
         score = score_event(truth, one_submission)
-        print("Unroll helix score for event %d: %.8f" % (event_id, score))
+        print("Filtered 1st pass score for event %d: %.8f" % (event_id, score))
 
-        # Make sure max track ID is not larger than length of labels list.
-        labels = sd.renumber_labels(labels)
-         
-       
-        for i in range(EXTENSION_ATTEMPT):          
-            limit = EXTENSION_LIMIT_START + EXTENSION_LIMIT_INTERVAL*i
-            labels = extend_labels(labels, hits, do_swap=i%2==1, limit=(limit))
-       
+        # Re-run our clustering algorithm on the remaining hits. If we add additional
+        # rounds of predictions, we likely want to set filter_hits=True.
+        model2 = Clusterer()
+        model_parameters=True # For now, input parameter to model is 'secondpass'
+        (labels, _) = run_predictions(labels, hits, model2, model_parameters, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
+
+        # Score for the event
         one_submission = create_one_event_submission(event_id, hits, labels)
         score = score_event(truth, one_submission)
-       
-        print("First backfitting for helix score for event %d: %.8f" % (event_id, score))
+        print("2nd pass score for event %d: %.8f" % (event_id, score))
 
+        # Un-comment this if you want to see the quality of the seeds generated.
+        #valid_labels = sd.filter_invalid_tracks(labels3, hits, my_volumes, seed_length)
+        #sd.count_truth_track_seed_hits(labels3, truth, seed_length, print_results=True)
 
-        # Filter out any tracks that do not originate from volumes 7, 8, or 9
-        seed_length = 5
-        my_volumes = [7, 8, 9]
-        #sd.count_truth_track_seed_hits(labels, truth, seed_length, print_results=True)
-        valid_labels = sd.filter_invalid_tracks(labels, hits, my_volumes, seed_length)
-        #sd.count_truth_track_seed_hits(valid_labels, truth, seed_length, print_results=True)
-        #one_submission = create_one_event_submission(event_id, hits, valid_labels)
-        #score = score_event(truth, one_submission)
-        #print("Filtered unroll helix score for event %d: %.8f" % (event_id, score))
-
-        # Make a copy of the hits, removing all hits from valid_labels
-        hits2 = hits.copy(deep=True)
-        drop_indices = np.where(valid_labels != 0)[0]
-        hits2 = hits2.drop(hits2.index[drop_indices])
-
-        # Re-run our clustering algorithm on the remaining hits
-        model2 = Clusterer()
-        labels2 = model2.predict(hits2, True)
-        labels2[labels2 == 0] = 0 - len(labels) - 1
-        labels2 = labels2 + len(labels) + 1
-        # Expand labels2 to include a zero(0) entry for all hits that were removed
-        # labels2_x = hack_one_last_run(labels, labels2, hits2)
-        # one_submission = create_one_event_submission(event_id, hits, labels2_x)
-        # score = score_event(truth, one_submission)
-        # print("Score for unroll 2: %.8f" % (score))
-
-        # Create final track labels, merging those tracks found in the first and second passes
-        labels3 = np.copy(valid_labels)
-        labels3[labels3 == 0] = labels2
-
-        # Prepare submission for an event
-        one_submission = create_one_event_submission(event_id, hits, labels3)
-        # Score for the event
-        score = score_event(truth, one_submission)
-        print("2-pass helix unroll score for event %d: %.8f" % (event_id, score))
-
-        # Merge/ensemble cone slicing and helix unrolling tracks
-        #labels4 = sd.merge_tracks(labels3, labels_cone)
-        #FIXME NO MERGE
-        one_submission = create_one_event_submission(event_id, hits, labels3)
-        score = score_event(truth, one_submission)
-        #print("Merged cone+helix score for event %d: %.8f" % (event_id, score))
-
-        for i in range(EXTENSION_ATTEMPT):          
-            limit = EXTENSION_LIMIT_START + EXTENSION_LIMIT_INTERVAL*i
-            labels3 = extend_labels(labels3, hits, do_swap=i%2==1, limit=(limit))
-
-        one_submission = create_one_event_submission(event_id, hits, labels3)
-        score = score_event(truth, one_submission)
-
-        print("2nd backfitting for event %d: %.8f" % (event_id, score))
-
-        valid_labels = sd.filter_invalid_tracks(labels3, hits, my_volumes, seed_length)
-        sd.count_truth_track_seed_hits(labels3, truth, seed_length, print_results=True)
-       
+        # Append the final submission for this event, as well as the score.
         dataset_submissions.append(one_submission)
         dataset_scores.append(score)
 
@@ -374,47 +400,19 @@ if __name__ == '__main__':
             # labels_cone = cone.slice_cones(hits, MIN_CONE_TRACK_LENGTH, MAX_CONE_TRACK_LENGTH)
             # labels_cone = sd.renumber_labels(labels_cone)
 
-            # Track pattern recognition 
+            # Helix unrolling track pattern recognition
+            # For the first run, we do not have an input array of labels/tracks.
             model = Clusterer()
-            labels = model.predict(hits)
-
-            # Make sure max track ID is not larger than length of labels list.
-            labels = sd.renumber_labels(labels)
-            for i in range(EXTENSION_ATTEMPT):      
-                limit = EXTENSION_LIMIT_START + EXTENSION_LIMIT_INTERVAL*i
-                labels = extend_labels(labels, hits, do_swap=i%2==1, limit=limit)
-
-            # Filter out any tracks that do not originate from volumes 7, 8, or 9
-            seed_length = 5
-            my_volumes = [7, 8, 9]
-            valid_labels = sd.filter_invalid_tracks(labels, hits, my_volumes, seed_length)
-
-            # Make a copy of the hits, removing all hits from valid_labels
-            hits2 = hits.copy(deep=True)
-            drop_indices = np.where(valid_labels != 0)[0]
-            hits2 = hits2.drop(hits2.index[drop_indices])
+            model_parameters=False # For now, input parameter to model is 'secondpass'
+            (labels, _) = run_predictions(None, hits, model, model_parameters, unmatched_only=False, merge_labels=False, filter_hits=True, track_extension=True)
 
             # Re-run our clustering algorithm on the remaining hits
             model2 = Clusterer()
-            labels2 = model2.predict(hits2, True)
-            labels2 = labels2 + len(labels) + 1
+            model_parameters=True # For now, input parameter to model is 'secondpass'
+            (labels, _) = run_predictions(labels, hits, model2, model_parameters, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
 
-            labels3 = np.copy(valid_labels)
-            labels3[labels3 == 0] = labels2
-
-            # Merge/ensemble cone slicing and helix unrolling tracks
-            #labels4 = sd.merge_tracks(labels3, labels_cone)
-
-            #FIXME
-            # Prepare submission for an event
-            #one_submission = create_one_event_submission(event_id, hits, labels4)
-            one_submission = create_one_event_submission(event_id, hits, labels3)
-
-
-            for i in range(EXTENSION_ATTEMPT): 
-                limit = EXTENSION_LIMIT_START + EXTENSION_LIMIT_INTERVAL*i
-                one_submission = extend_submission(one_submission, hits, do_swap=i%2==1, limit=limit)
-
+            # Create our submission for this test event.
+            one_submission = create_one_event_submission(event_id, hits, labels)
             test_dataset_submissions.append(one_submission)
             
 
