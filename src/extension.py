@@ -1,79 +1,116 @@
 import numpy as np
 from sklearn.neighbors import KDTree
-def extend(submission,hits):
 
-		df = submission.merge(hits,  on=['hit_id'], how='left')
-		df = df.assign(d = np.sqrt( df.x**2 + df.y**2 + df.z**2 ))
-		df = df.assign(r = np.sqrt( df.x**2 + df.y**2))
-		df = df.assign(arctan2 = np.arctan2(df.z, df.r))
+def extend_labels(labels, hits, do_swap=False, limit=0.04):
+    df = hits.copy(deep=True)
+    df['track_id'] = labels.tolist()
+    return extend(df, do_swap, limit).track_id.values
 
-		for angle in range(-180,180,1):
+def extend_submission(submissions, hits, do_swap=False, limit=0.04):
+    df = submissions.merge(hits,  on=['hit_id'], how='left')
+    df = extend(df, do_swap, limit)
+    return df[['event_id', 'hit_id', 'track_id']]       
+    
+def _one_cone_slice(df, angle, delta_angle, limit=0.04, num_neighbours=18):
 
-		    print ('\r %f '%angle, end='',flush=True)
-		    #df1 = df.loc[(df.arctan2>(angle-0.5)/180*np.pi) & (df.arctan2<(angle+0.5)/180*np.pi)]
-		    df1 = df.loc[(df.arctan2>(angle-1.0)/180*np.pi) & (df.arctan2<(angle+1.0)/180*np.pi)]
+    df1 = df.loc[(df.arctan2>(angle - delta_angle)/180*np.pi) & (df.arctan2<(angle + delta_angle)/180*np.pi)]
 
-		    min_num_neighbours = len(df1)
-		    if min_num_neighbours<4: continue
+    min_num_neighbours = len(df1)
+    if min_num_neighbours < 3: 
+        return df
 
-		    hit_ids = df1.hit_id.values
-		    x,y,z = df1.as_matrix(columns=['x', 'y', 'z']).T
-		    r  = (x**2 + y**2)**0.5
-		    r  = r/1000
-		    a  = np.arctan2(y,x)
-		    tree = KDTree(np.column_stack([a,r]), metric='euclidean')
+    hit_ids = df1.hit_id.values
+    x,y,z = df1.as_matrix(columns=['x', 'y', 'z']).T
+    r  = (x**2 + y**2)**0.5
+    r  = r/1000
+    a  = np.arctan2(y,x)
+    c = np.cos(a)
+    s = np.sin(a)
+    tree = KDTree(np.column_stack([c,s,r]), metric='euclidean')
 
-		    track_ids = list(df1.track_id.unique())
-		    num_track_ids = len(track_ids)
-		    min_length=3
+    track_ids = list(df1.track_id.unique())
+    num_track_ids = len(track_ids)
+    min_length=3
 
-		    for i in range(num_track_ids):
-		        p = track_ids[i]
-		        if p==0: continue
+    for i in range(num_track_ids):
+        p = track_ids[i]
+        if p==0: continue
 
-		        idx = np.where(df1.track_id==p)[0]
-		        if len(idx)<min_length: continue
+        idx = np.where(df1.track_id==p)[0]
+        if len(idx)<min_length: continue
 
-		        if angle>0:
-		            idx = idx[np.argsort( z[idx])]
-		        else:
-		            idx = idx[np.argsort(-z[idx])]
+        if angle>0:
+            idx = idx[np.argsort( z[idx])]
+        else:
+            idx = idx[np.argsort(-z[idx])]
+
+## start and end points  ##
+        idx0,idx1 = idx[0],idx[-1]
+        a0 = a[idx0]
+        a1 = a[idx1]
+        r0 = r[idx0]
+        r1 = r[idx1]
+        c0 = c[idx0]
+        c1 = c[idx1]
+        s0 = s[idx0]
+        s1 = s[idx1]
+
+        da0 = a[idx[1]] - a[idx[0]]  #direction
+        dr0 = r[idx[1]] - r[idx[0]]
+        direction0 = np.arctan2(dr0,da0)
+
+        da1 = a[idx[-1]] - a[idx[-2]]
+        dr1 = r[idx[-1]] - r[idx[-2]]
+        direction1 = np.arctan2(dr1,da1)
+
+        ## extend start point
+        ns = tree.query([[c0, s0, r0]], k=min(num_neighbours, min_num_neighbours), return_distance=False)
+        ns = np.concatenate(ns)
+
+        direction = np.arctan2(r0 - r[ns], a0 - a[ns])
+        diff = 1 - np.cos(direction - direction0)
+        ns = ns[(r0 - r[ns] > 0.01) & (diff < (1 - np.cos(limit)))]
+        for n in ns: 
+            df.loc[df.hit_id == hit_ids[n], 'track_id'] = p
+
+        ## extend end point
+        ns = tree.query([[c1, s1, r1]], k=min(num_neighbours, min_num_neighbours), return_distance=False)
+        ns = np.concatenate(ns)
+
+        direction = np.arctan2(r[ns] - r1, a[ns] - a1)
+        diff = 1 - np.cos(direction - direction1)
+  
+        ns = ns[(r[ns] - r1 > 0.01) & (diff < (1 - np.cos(limit)))]
+        for n in ns:  
+            df.loc[df.hit_id == hit_ids[n], 'track_id'] = p
+      
+    return df
+
+def extend(df, do_swap=False, limit=0.04):
+    if do_swap:
+        df = df.assign(x = -df.x)
+        df = df.assign(y = -df.y)
+
+    df = df.assign(d = np.sqrt( df.x**2 + df.y**2 + df.z**2 ))
+    df = df.assign(r = np.sqrt( df.x**2 + df.y**2))
+    df = df.assign(arctan2 = np.arctan2(df.z, df.r))
 
 
-		        ## start and end points  ##
-		        idx0,idx1 = idx[0],idx[-1]
-		        a0 = a[idx0]
-		        a1 = a[idx1]
-		        r0 = r[idx0]
-		        r1 = r[idx1]
+    for angle in range(-90,90,1):
 
-		        da0 = a[idx[1]] - a[idx[0]]  #direction
-		        dr0 = r[idx[1]] - r[idx[0]]
-		        direction0 = np.arctan2(dr0,da0) 
+        print ('\r %f '%angle, end='',flush=True)
+        df1 = df.loc[(df.arctan2>(angle-1.0)/180*np.pi) & (df.arctan2<(angle+1.0)/180*np.pi)]
 
-		        da1 = a[idx[-1]] - a[idx[-2]]
-		        dr1 = r[idx[-1]] - r[idx[-2]]
-		        direction1 = np.arctan2(dr1,da1) 
+        num_hits = len(df1)
+        # Dynamically adjust the delta based on how many hits are found
+        if num_hits > 2000:
+            df = _one_cone_slice(df, angle-0.6, 0.4, limit)
+            df = _one_cone_slice(df, angle-0.2, 0.4, limit)
+            df = _one_cone_slice(df, angle+0.2, 0.4, limit)
+            df = _one_cone_slice(df, angle+0.6, 0.4, limit)
+        else:
+            df = _one_cone_slice(df, angle, 1, limit)
+           
+    return df
 
-	 
-		        ## extend start point
-		        ns = tree.query([[a0,r0]], k=min(20,min_num_neighbours), return_distance=False)
-		        ns = np.concatenate(ns)
-		        direction = np.arctan2(r0-r[ns],a0-a[ns])
-		        ns = ns[(r0-r[ns]>0.01) &(np.fabs(direction-direction0)<0.04)]
-	   
-		        for n in ns:
-		            df.loc[ df.hit_id==hit_ids[n],'track_id' ] = p 
-
-		        ## extend end point
-		        ns = tree.query([[a1,r1]], k=min(20,min_num_neighbours), return_distance=False)
-		        ns = np.concatenate(ns)
-
-		        direction = np.arctan2(r[ns]-r1,a[ns]-a1)
-		        ns = ns[(r[ns]-r1>0.01) &(np.fabs(direction-direction1)<0.04)] 
-		        
-		        for n in ns:
-		            df.loc[ df.hit_id==hit_ids[n],'track_id' ] = p
-		#print ('\r')
-		df = df[['event_id', 'hit_id', 'track_id']]
-		return df
+       
