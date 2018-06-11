@@ -79,6 +79,7 @@ def _one_cone_slice(df, angle, delta_angle, limit=0.04, num_neighbours=18):
 
         direction = np.arctan2(r[ns] - r1, a[ns] - a1)
         diff = 1 - np.cos(direction - direction1)
+  
         ns = ns[(r[ns] - r1 > 0.01) & (diff < (1 - np.cos(limit)))]
         for n in ns:  
             df.loc[df.hit_id == hit_ids[n], 'track_id'] = p
@@ -87,9 +88,8 @@ def _one_cone_slice(df, angle, delta_angle, limit=0.04, num_neighbours=18):
 
 def extend(df, do_swap=False, limit=0.04):
     if do_swap:
-        df = df.assign(xtmp = df.y)
-        df = df.assign(y = -df.x)
-        df = df.assign(x = df.xtmp)
+        df = df.assign(x = -df.x)
+        df = df.assign(y = -df.y)
 
     df = df.assign(d = np.sqrt( df.x**2 + df.y**2 + df.z**2 ))
     df = df.assign(r = np.sqrt( df.x**2 + df.y**2))

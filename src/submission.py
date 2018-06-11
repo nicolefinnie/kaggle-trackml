@@ -26,7 +26,7 @@ class MultiJob(object):
             os.system('rm ' + self.submission_file_name)
 
         for ii in np.arange(0, self.total_event, self.event):
-            submission_name = 'submission_' + self.get_filename(ii) + '.csv'
+            submission_name = 'submission' + self.get_filename(ii) + '.csv'
             print('cat ' + submission_name + ' >> ' + self.submission_file_name)
             os.system('cat ' + submission_name + ' >> ' + self.submission_file_name)
             

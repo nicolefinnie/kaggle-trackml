@@ -23,6 +23,9 @@ import cone_slicing as cone
 RZ_SCALES = [0.4, 1.6, 0.5]
 SCALED_DISTANCE = [1,       1,       0.5, 0.125, 0.01, 0.01, 0.001, 0.001]
 FEATURE_MATRIX = ['sina1', 'cosa1', 'z1', 'z2', 'xd', 'yd', 'px', 'py']
+SCALED_DISTANCE_2 = [1,       1,       0.5, 0.01]
+FEATURE_MATRIX_2 = ['sina1', 'cosa1', 'z1', 'z1a1' ]
+
 
 DBSCAN_GLOBAL_EPS = 0.0075
 DBSCAN_LOCAL_EPS = 0.0033
@@ -43,10 +46,13 @@ MAX_CONE_TRACK_LENGTH = 30
 
 
 print('Feature matrix: ' + str(FEATURE_MATRIX))
-
-
-print('rz scales: ' + str(RZ_SCALES))
 print('scaled distance: ' + str(SCALED_DISTANCE))
+
+print('Feature matrix 2nd pass: ' + str(FEATURE_MATRIX_2))
+print('scaled distance 2nd pass: ' + str(SCALED_DISTANCE_2))
+
+#print('rz scales: ' + str(RZ_SCALES))
+
 print('steprr: ' + str(STEPRR))
 print('stepeps: ' + str(STEPEPS))
 print('local eps: ' + str(DBSCAN_LOCAL_EPS))
@@ -111,7 +117,7 @@ class Clusterer(object):
         dfh['xd'] = dfh.x/dfh['d']
         dfh['yd'] = dfh.y/dfh['d']
 
-        for ii in tqdm(np.arange(0, STEPS, 1)):
+        for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
             print ('\r steps: %d '%ii, end='',flush=True)
 
             dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi
@@ -129,12 +135,16 @@ class Clusterer(object):
             
             ss = StandardScaler()
    
-            dfs = ss.fit_transform(dfh[FEATURE_MATRIX].values)
-            
-            dfs = np.multiply(dfs, SCALED_DISTANCE)
+            if secondpass is True:
+                dfs = ss.fit_transform(dfh[FEATURE_MATRIX_2].values)
+                dfs = np.multiply(dfs, SCALED_DISTANCE_2)
+            else:
+                dfs = ss.fit_transform(dfh[FEATURE_MATRIX].values)
+                dfs = np.multiply(dfs, SCALED_DISTANCE)
+
             self.clusters = DBSCAN(eps=DBSCAN_LOCAL_EPS + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
 
-            if ii==0:
+            if ii==-STEPS:
                 dfh['s1']=self.clusters
                 dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
             else:
@@ -149,48 +159,45 @@ class Clusterer(object):
                 self.clusters = dfh['s1'].values
                 dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
 
-        for ii in tqdm(np.arange(0, STEPS, 1)):
-            print ('\r steps: %d '%ii, end='',flush=True)
+        # for ii in tqdm(np.arange(0, STEPS, 1)):
+        #     print ('\r steps: %d '%ii, end='',flush=True)            
+        #     dfh['za0'] = dfh.z/dfh.a0
+        #     dfh['a1'] = dfh['a0'] - (rr + STEPRR*rr**2)*ii/180*np.pi
             
-            dfh['a0'] = np.arctan2(-dfh.x, dfh.y)
-            dfh['za0'] = dfh.z/dfh.a0
+        #     dfh['za1'] = dfh.z/dfh['a1']
+        #     dfh['z1a1'] = dfh['z1']/dfh['a1']
+        #     dfh['cur'] = np.absolute(dfh.r) / (dfh.r**2 + (dfh.z/dfh.a1)**2)
+        #         # parameter space
+        #     dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
+        #     dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
 
-            dfh['a1'] = dfh['a0'] - (rr + STEPRR*rr**2)*ii/180*np.pi
+
+        #     dfh['x2'] = 1/dfh['z1'] 
+        #     dfh['sina1'] = np.sin(dfh['a1'])
+        #     dfh['cosa1'] = np.cos(dfh['a1'])
+        #     dfh['xd'] = -dfh.x/dfh['d']
+        #     dfh['yd'] = -dfh.y/dfh['d']
             
-            dfh['za1'] = dfh.z/dfh['a1']
-            dfh['z1a1'] = dfh['z1']/dfh['a1']
-            dfh['cur'] = np.absolute(dfh.r) / (dfh.r**2 + (dfh.z/dfh.a1)**2)
-                # parameter space
-            dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
-            dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
-
-
-            dfh['x2'] = 1/dfh['z1'] 
-            dfh['sina1'] = np.sin(dfh['a1'])
-            dfh['cosa1'] = np.cos(dfh['a1'])
-            dfh['xd'] = dfh.y/dfh['d']
-            dfh['yd'] = -dfh.x/dfh['d']
+        #     ss = StandardScaler()
             
-            ss = StandardScaler()
-            
-            dfs = ss.fit_transform(dfh[FEATURE_MATRIX].values)
+        #     dfs = ss.fit_transform(dfh[FEATURE_MATRIX].values)
 
-            dfs = np.multiply(dfs, SCALED_DISTANCE)
-            clusters = DBSCAN(eps=DBSCAN_LOCAL_EPS - ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+        #     dfs = np.multiply(dfs, SCALED_DISTANCE)
+        #     clusters = DBSCAN(eps=DBSCAN_LOCAL_EPS - ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
 
-            dfh['s2'] = clusters
-            dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
-            maxs1 = dfh['s1'].max()
-            cond = np.where(dfh['N2'].values>dfh['N1'].values )
-            s1 = dfh['s1'].values
-            s1[cond] = dfh['s2'].values[cond]+maxs1
-            dfh['s1'] = s1
-            dfh['s1'] = dfh['s1'].astype('int64')
-            dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+        #     dfh['s2'] = clusters
+        #     dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
+        #     maxs1 = dfh['s1'].max()
+        #     cond = np.where(dfh['N2'].values>dfh['N1'].values)
+        #     s1 = dfh['s1'].values
+        #     s1[cond] = dfh['s2'].values[cond]+maxs1
+        #     dfh['s1'] = s1
+        #     dfh['s1'] = dfh['s1'].astype('int64')
+        #     dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
         return dfh['s1'].values
 
     def predict(self, hits, secondpass=False): 
-        self.clusters = self._init(hits)        
+        self.clusters = self._init(hits, secondpass)        
             
         labels = np.unique(self.clusters)
         self._eliminate_outliers(labels)
@@ -238,6 +245,9 @@ def run_single_threaded_training(skip, nevents):
 
         # Helix unrolling track pattern recognition
         model = Clusterer()
+        #FIXME remove this code
+        #labels = model.predict(hits)
+
         label_file = 'event_' + str(event_id)+'_labels.csv'
         if os.path.exists(label_file):
             labels = pd.read_csv(label_file).label.values
@@ -309,12 +319,21 @@ def run_single_threaded_training(skip, nevents):
         score = score_event(truth, one_submission)
         #print("Merged cone+helix score for event %d: %.8f" % (event_id, score))
 
-        for i in range(EXTENSION_ATTEMPT): 
+        for i in range(EXTENSION_ATTEMPT):          
             limit = EXTENSION_LIMIT_START + EXTENSION_LIMIT_INTERVAL*i
-            one_submission = extend_submission(one_submission, hits, do_swap=i%2==1, limit=limit)
+            labels3 = extend_labels(labels3, hits, do_swap=i%2==1, limit=(limit))
+
+        one_submission = create_one_event_submission(event_id, hits, labels3)
+
+
+        # for i in range(EXTENSION_ATTEMPT): 
+        #     limit = EXTENSION_LIMIT_START + EXTENSION_LIMIT_INTERVAL*i
+        #     one_submission = extend_submission(one_submission, hits, do_swap=i%2==1, limit=limit)
         score = score_event(truth, one_submission)
 
         print("2nd backfitting for event %d: %.8f" % (event_id, score))
+        sd.count_truth_track_seed_hits(labels, truth, seed_length, print_results=True)
+       
         dataset_submissions.append(one_submission)
         dataset_scores.append(score)
 
@@ -379,7 +398,7 @@ if __name__ == '__main__':
 
             # Re-run our clustering algorithm on the remaining hits
             model2 = Clusterer()
-            labels2 = model2.predict(hits2)
+            labels2 = model2.predict(hits2, True)
             labels2 = labels2 + len(labels) + 1
 
             labels3 = np.copy(valid_labels)
@@ -403,6 +422,6 @@ if __name__ == '__main__':
 
         # Create submission file
         submission = pd.concat(test_dataset_submissions, axis=0)
-        submission_file = 'submission_' + str(test_skip) + '_' + str(test_events) + '.csv'
+        submission_file = 'submission_' + "{:03}".format(test_skip) + '_' + str(test_events) + '.csv'
         submission.to_csv(submission_file, index=False, header=use_header)
 
