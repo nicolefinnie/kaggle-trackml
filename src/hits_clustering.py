@@ -19,6 +19,7 @@ import collections as coll
 import math
 from extension import extend_submission, extend_labels
 import cone_slicing as cone
+import merge as merge
 
 RZ_SCALES = [0.4, 1.6, 0.5]
 SCALED_DISTANCE = [1,       1,       0.5, 0.125, 0.01, 0.01, 0.001, 0.001]
@@ -194,6 +195,23 @@ def hack_one_last_run(labels, labels2, hits2):
         fix_ix = fix_ix + 1
     return labels2_x
 
+def run_cone_slicing_predictions(all_hits):
+    # Filter out any tracks that do not originate from volumes 7, 8, or 9
+    seed_length = 5
+    my_volumes = [7, 8, 9]
+
+    # Cone slicing.
+    labels_cone1 = cone.slice_cones(all_hits, MIN_CONE_TRACK_LENGTH, MAX_CONE_TRACK_LENGTH, False)
+    labels_cone1 = merge.renumber_labels(labels_cone1)
+
+    labels_cone2 = cone.slice_cones(all_hits, MIN_CONE_TRACK_LENGTH, MAX_CONE_TRACK_LENGTH, True)
+    labels_cone2 = merge.renumber_labels(labels_cone2)
+
+    labels_cone = merge.heuristic_merge_tracks(labels_cone1, labels_cone2, print_summary=False)
+
+    labels_cone = merge.filter_invalid_tracks(labels_cone, all_hits, my_volumes, 2)
+    return labels_cone
+
 def run_predictions(all_labels, all_hits, model, unmatched_only=True, merge_labels=True, filter_hits=True, track_extension=True):
     """ Run a round of predictions on all or a subset of remaining hits.
     Parameters:
@@ -311,6 +329,21 @@ def run_single_threaded_training(skip, nevents):
         one_submission = create_one_event_submission(event_id, hits, labels)
         score = score_event(truth, one_submission)
         print("Filtered 1st pass score for event %d: %.8f" % (event_id, score))
+
+        ### INITIAL HEURISTIC MERGE ATTEMPT BELOW ###
+        ### Run cone slicing, merge with helix unrolling results from above ###
+        ### Merging step also performs heuristic outlier removal ###
+        # Do cone slicing, use heuristic merge to combine with helix unrolling
+        labels_cone = run_cone_slicing_predictions(hits)
+        labels_cone = merge.remove_outliers(labels_cone, hits, print_counts=False)
+        labels_helix = merge.remove_outliers(labels, hits, print_counts=False)
+        labels_merge = merge.heuristic_merge_tracks(labels_helix, labels_cone, print_summary=False)
+        one_submission = create_one_event_submission(event_id, hits, labels_merge)
+        score = score_event(truth, one_submission)
+        print("Filtered 1st pass score merged with cone slicing for event %d: %.8f" % (event_id, score))
+        labels = labels_merge
+        ### INITIAL HEURISTIC MERGE ATTEMPT BELOW ###
+
 
         # Re-run our clustering algorithm on the remaining hits. If we add additional
         # rounds of predictions, we likely want to set filter_hits=True.
