@@ -195,10 +195,14 @@ def hack_one_last_run(labels, labels2, hits2):
         fix_ix = fix_ix + 1
     return labels2_x
 
-def run_cone_slicing_predictions(all_hits):
-    # Filter out any tracks that do not originate from volumes 7, 8, or 9
-    seed_length = 5
-    my_volumes = [7, 8, 9]
+def run_cone_slicing_predictions(event_id, all_hits, label_identifier):
+
+    # Shortcut - if we've previously generated and saved labels, just use them
+    # rather than re-generating.
+    label_file = 'event_' + str(event_id)+'_labels_' + label_identifier + '.csv'
+    if os.path.exists(label_file):
+        labels_cone = pd.read_csv(label_file).label.values
+        return labels_cone
 
     # Cone slicing.
     labels_cone1 = cone.slice_cones(all_hits, MIN_CONE_TRACK_LENGTH, MAX_CONE_TRACK_LENGTH, False)
@@ -209,7 +213,21 @@ def run_cone_slicing_predictions(all_hits):
 
     labels_cone = merge.heuristic_merge_tracks(labels_cone1, labels_cone2, print_summary=False)
 
-    labels_cone = merge.filter_invalid_tracks(labels_cone, all_hits, my_volumes, 2)
+    for i in range(EXTENSION_ATTEMPT):
+        limit = EXTENSION_LIMIT_START + EXTENSION_LIMIT_INTERVAL*i
+        labels_cone = extend_labels(labels_cone, all_hits, do_swap=i%2==1, limit=(limit))
+
+    labels_cone = merge.renumber_labels(labels_cone)
+
+    # Filter out any tracks that do not originate from volumes 7, 8, or 9
+    #seed_length = 5
+    #my_volumes = [7, 8, 9]
+    #labels_cone = merge.filter_invalid_tracks(labels_cone, all_hits, my_volumes, 2)
+
+    # Save the generated labels, can avoid re-generation next run.
+    df = pd.DataFrame(labels_cone)
+    df.to_csv(label_file, index=False, header=['label'])
+
     return labels_cone
 
 def run_predictions(all_labels, all_hits, model, unmatched_only=True, merge_labels=True, filter_hits=True, track_extension=True):
@@ -287,6 +305,74 @@ def run_predictions(all_labels, all_hits, model, unmatched_only=True, merge_labe
 
     return (labels_out, unfiltered_labels)
 
+def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier):
+    # Shortcut - if we've previously generated and saved labels, just use them
+    # rather than re-generating.
+    label_file = 'event_' + str(event_id)+'_labels_' + label_identifier + '.csv'
+    if os.path.exists(label_file):
+        labels = pd.read_csv(label_file).label.values
+        return labels
+
+    # Helix unrolling track pattern recognition
+    model_parameters = []
+    model_parameters.append(FEATURE_MATRIX)
+    model_parameters.append(SCALED_DISTANCE)
+    model = Clusterer(model_parameters)
+    
+    # For the first run, we do not have an input array of labels/tracks.
+    (labels, unfiltered_labels) = run_predictions(None, hits, model, unmatched_only=False, merge_labels=False, filter_hits=True, track_extension=True)
+
+    if truth is not None:
+        one_submission = create_one_event_submission(event_id, hits, unfiltered_labels)
+        score = score_event(truth, one_submission)
+        print("Unfiltered 1st pass score for event %d: %.8f" % (event_id, score))
+        
+        # Score for the event
+        one_submission = create_one_event_submission(event_id, hits, labels)
+        score = score_event(truth, one_submission)
+        print("Filtered 1st pass score for event %d: %.8f" % (event_id, score))
+
+    # Re-run our clustering algorithm on the remaining hits. If we add additional
+    # rounds of predictions, we likely want to set filter_hits=True.
+    model_parameters.clear()
+    model_parameters.append(FEATURE_MATRIX_2)
+    model_parameters.append(SCALED_DISTANCE_2)
+    model2 = Clusterer(model_parameters)
+    
+    (labels, unfiltered_labels) = run_predictions(labels, hits, model2, unmatched_only=True, merge_labels=True, filter_hits=True, track_extension=True)
+
+    if truth is not None:
+        # Score for the event
+        one_submission = create_one_event_submission(event_id, hits, unfiltered_labels)
+        score = score_event(truth, one_submission)
+        print("Unfiltered 2nd pass score for event %d: %.8f" % (event_id, score))
+
+        # Un-comment this if you want to see the quality of the seeds generated.
+        #seed_length = 5
+        #my_volumes = [7, 8, 9]
+        #labels = sd.filter_invalid_tracks(labels, hits, my_volumes, seed_length)
+        #sd.count_truth_track_seed_hits(labels, truth, seed_length, print_results=True)
+
+    model_parameters.clear()
+    model_parameters.append(FEATURE_MATRIX_3)
+    model_parameters.append(SCALED_DISTANCE_3)
+    model3 = Clusterer(model_parameters, cartesian=True)
+    
+    (labels, _) = run_predictions(labels, hits, model3, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
+
+    # Save the generated labels, can avoid re-generation next run.
+    df = pd.DataFrame(labels)
+    df.to_csv(label_file, index=False, header=['label'])
+
+    # Score for the event
+    if truth is not None:
+        one_submission = create_one_event_submission(event_id, hits, labels)
+        score = score_event(truth, one_submission)
+        print("3rd pass score for event %d: %.8f" % (event_id, score))
+
+    return labels
+
+
 def run_single_threaded_training(skip, nevents):
     path_to_train = "../input/train_1"
     dataset_submissions = []
@@ -294,86 +380,19 @@ def run_single_threaded_training(skip, nevents):
 
     for event_id, hits, cells, particles, truth in load_dataset(path_to_train, skip=skip, nevents=nevents):
 
-        # Cone slicing.
-        # labels_cone_1 = cone.slice_cones(hits, MIN_CONE_TRACK_LENGTH, MAX_CONE_TRACK_LENGTH, do_swap=False)
-        # labels_cone_2 = cone.slice_cones(hits, MIN_CONE_TRACK_LENGTH, MAX_CONE_TRACK_LENGTH, do_swap=True)
-        # labels_cone = sd.merge_tracks(labels_cone_1, labels_cone_2)
-        
-        # labels_cone = sd.renumber_labels(labels_cone)
-        # one_submission = create_one_event_submission(event_id, hits, labels_cone)
-        # score = score_event(truth, one_submission)
-        # print("Cone slice score for event %d: %.8f" % (event_id, score))
-        
+        labels_helix = run_helix_unrolling_predictions(event_id, hits, truth, 'train_helix')
 
-        # Helix unrolling track pattern recognition
-        model_parameters = []
-        model_parameters.append(FEATURE_MATRIX)
-        model_parameters.append(SCALED_DISTANCE)
-        model = Clusterer(model_parameters)
-        
-        label_file = 'event_' + str(event_id)+'_labels.csv'
-        if os.path.exists(label_file):
-            labels = pd.read_csv(label_file).label.values
-        else:
-            # For the first run, we do not have an input array of labels/tracks.
-            
-            (labels, unfiltered_labels) = run_predictions(None, hits, model, unmatched_only=False, merge_labels=False, filter_hits=True, track_extension=True)
-            df = pd.DataFrame(labels)
-            df.to_csv(label_file, index=False, header=['label'])
-
-            one_submission = create_one_event_submission(event_id, hits, unfiltered_labels)
-            score = score_event(truth, one_submission)
-            print("Unfiltered 1st pass score for event %d: %.8f" % (event_id, score))
-        
-        # Score for the event
-        one_submission = create_one_event_submission(event_id, hits, labels)
-        score = score_event(truth, one_submission)
-        print("Filtered 1st pass score for event %d: %.8f" % (event_id, score))
-
-        ### INITIAL HEURISTIC MERGE ATTEMPT BELOW ###
-        ### Run cone slicing, merge with helix unrolling results from above ###
-        ### Merging step also performs heuristic outlier removal ###
         # Do cone slicing, use heuristic merge to combine with helix unrolling
-        labels_cone = run_cone_slicing_predictions(hits)
+        labels_cone = run_cone_slicing_predictions(event_id, hits, 'train_cone')
+
+        # Merge results from two sets of predictions, removing outliers first
         labels_cone = merge.remove_outliers(labels_cone, hits, print_counts=False)
-        labels_helix = merge.remove_outliers(labels, hits, print_counts=False)
-        labels_merge = merge.heuristic_merge_tracks(labels_helix, labels_cone, print_summary=False)
-        one_submission = create_one_event_submission(event_id, hits, labels_merge)
-        score = score_event(truth, one_submission)
-        print("Filtered 1st pass score merged with cone slicing for event %d: %.8f" % (event_id, score))
-        labels = labels_merge
-        ### INITIAL HEURISTIC MERGE ATTEMPT BELOW ###
+        labels_helix = merge.remove_outliers(labels_helix, hits, print_counts=False)
+        labels = merge.heuristic_merge_tracks(labels_helix, labels_cone, print_summary=False)
 
-
-        # Re-run our clustering algorithm on the remaining hits. If we add additional
-        # rounds of predictions, we likely want to set filter_hits=True.
-        model_parameters.clear()
-        model_parameters.append(FEATURE_MATRIX_2)
-        model_parameters.append(SCALED_DISTANCE_2)
-        model2 = Clusterer(model_parameters)
-        
-        (labels, unfiltered_labels) = run_predictions(labels, hits, model2, unmatched_only=True, merge_labels=True, filter_hits=True, track_extension=True)
-
-        # Score for the event
-        one_submission = create_one_event_submission(event_id, hits, unfiltered_labels)
-        score = score_event(truth, one_submission)
-        print("Unfiltered 2nd pass score for event %d: %.8f" % (event_id, score))
-
-        # Un-comment this if you want to see the quality of the seeds generated.
-        #valid_labels = sd.filter_invalid_tracks(labels3, hits, my_volumes, seed_length)
-        #sd.count_truth_track_seed_hits(labels3, truth, seed_length, print_results=True)
-
-        model_parameters.clear()
-        model_parameters.append(FEATURE_MATRIX_3)
-        model_parameters.append(SCALED_DISTANCE_3)
-        model3 = Clusterer(model_parameters, cartesian=True)
-       
-        (labels, _) = run_predictions(labels, hits, model3, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
-
-        # Score for the event
         one_submission = create_one_event_submission(event_id, hits, labels)
         score = score_event(truth, one_submission)
-        print("3nd pass score for event %d: %.8f" % (event_id, score))
+        print("Merged helix unrolling and cone slicing for event %d: %.8f" % (event_id, score))
 
         # Append the final submission for this event, as well as the score.
         dataset_submissions.append(one_submission)
@@ -414,31 +433,16 @@ if __name__ == '__main__':
 
             print('Event ID: ', event_id)
 
-            # Cone slicing.
-            # labels_cone = cone.slice_cones(hits, MIN_CONE_TRACK_LENGTH, MAX_CONE_TRACK_LENGTH)
-            # labels_cone = sd.renumber_labels(labels_cone)
+            # Helix unrolling predictions
+            labels_helix = run_helix_unrolling_predictions(event_id, hits, None, 'test_helix')
 
-            # Helix unrolling track pattern recognition
-            # For the first run, we do not have an input array of labels/tracks.
-            model_parameters = []
-            model_parameters.append(FEATURE_MATRIX)
-            model_parameters.append(SCALED_DISTANCE)
-            model = Clusterer(model_parameters)
-            (labels, _) = run_predictions(None, hits, model, unmatched_only=False, merge_labels=False, filter_hits=True, track_extension=True)
+            # Cone slicing predictions
+            labels_cone = run_cone_slicing_predictions(event_id, hits, 'test_cone')
 
-            # Re-run our clustering algorithm on the remaining hits
-            model_parameters.clear()
-            model_parameters.append(FEATURE_MATRIX_2)
-            model_parameters.append(SCALED_DISTANCE_2)
-            model2 = Clusterer(model_parameters)
-            (labels, _) = run_predictions(labels, hits, model2, unmatched_only=True, merge_labels=True, filter_hits=True, track_extension=True)
-
-            model_parameters.clear()
-            model_parameters.append(FEATURE_MATRIX_3)
-            model_parameters.append(SCALED_DISTANCE_3)
-            model3 = Clusterer(model_parameters, cartesian=True)
-            (labels, _) = run_predictions(labels, hits, model3, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
-
+            # Eliminate outliers and merge helix unrolling predictions with cone slicing predictions.
+            labels_cone = merge.remove_outliers(labels_cone, hits, print_counts=False)
+            labels_helix = merge.remove_outliers(labels_helix, hits, print_counts=False)
+            labels = merge.heuristic_merge_tracks(labels_helix, labels_cone, print_summary=False)
 
             # Create our submission for this test event.
             one_submission = create_one_event_submission(event_id, hits, labels)

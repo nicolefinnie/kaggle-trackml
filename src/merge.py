@@ -501,7 +501,7 @@ def remove_track_outliers(track, labels, hits, aggressive_removal=False):
             
     return (labels, found_bad_volume, found_bad_dimension, found_bad_z)
 
-def remove_outliers(labels, hits, print_counts=True):
+def remove_outliers(labels, hits, aggressive_removal=False, print_counts=True):
     tracks = np.unique(labels)
     count_rem_volume = 0
     count_rem_dimension = 0
@@ -512,7 +512,7 @@ def remove_outliers(labels, hits, print_counts=True):
             continue
         track_hits = np.where(labels == track)[0]
         if len(track_hits) > 3:
-            (labels, c1, c2, c3) = remove_track_outliers(track, labels, hits)
+            (labels, c1, c2, c3) = remove_track_outliers(track, labels, hits, aggressive_removal=aggressive_removal)
             count_rem_volume = count_rem_volume + c1
             count_rem_dimension = count_rem_dimension + c2
             count_duplicatez = count_duplicatez + c3
