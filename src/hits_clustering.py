@@ -24,8 +24,9 @@ RZ_SCALES = [0.4, 1.6, 0.5]
 SCALED_DISTANCE = [1,       1,       0.5, 0.125, 0.01, 0.01, 0.001, 0.001]
 FEATURE_MATRIX = ['sina1', 'cosa1', 'z1', 'z2', 'xd', 'yd', 'px', 'py']
 SCALED_DISTANCE_2 = [1,       1,       0.5, 0.01]
-FEATURE_MATRIX_2 = ['sina1', 'cosa1', 'z1', 'z1a1' ]
-
+FEATURE_MATRIX_2 = ['sina1', 'cosa1', 'z3', 'z1a1']
+SCALED_DISTANCE_3 = [1,       1,       0.5, 0.01]
+FEATURE_MATRIX_3 = ['sina1', 'cosa1', 'z1', 'z1a1']
 
 
 DBSCAN_GLOBAL_EPS = 0.0075
@@ -52,6 +53,11 @@ print('scaled distance: ' + str(SCALED_DISTANCE))
 print('Feature matrix 2nd pass: ' + str(FEATURE_MATRIX_2))
 print('scaled distance 2nd pass: ' + str(SCALED_DISTANCE_2))
 
+print('Feature matrix 3rd pass: ' + str(FEATURE_MATRIX_3))
+print('scaled distance 3rd pass: ' + str(SCALED_DISTANCE_3))
+
+
+
 #print('rz scales: ' + str(RZ_SCALES))
 
 print('steprr: ' + str(STEPRR))
@@ -67,8 +73,10 @@ print('maximum cone slice track length: ' + str(MAX_CONE_TRACK_LENGTH))
 
 
 class Clusterer(object):
-    def __init__(self,rz_scales=RZ_SCALES):                        
-        self.rz_scales=rz_scales
+    def __init__(self, model_parameters, cartesian=False, rz_scales=RZ_SCALES):                        
+        self.rz_scales = rz_scales
+        self.model_parameters = model_parameters
+        self.cartesian = cartesian
 
     def _eliminate_outliers(self,labels):
         indices=np.zeros((len(labels)),np.float32)
@@ -104,7 +112,7 @@ class Clusterer(object):
           
         return X
 
-    def _init(self, dfh, secondpass=False):
+    def _init(self, dfh):
         dfh['d'] = np.sqrt(dfh.x**2+dfh.y**2+dfh.z**2)
         dfh['r'] = np.sqrt(dfh.x**2+dfh.y**2)
         dfh['a0'] = np.arctan2(dfh.y,dfh.x)
@@ -135,14 +143,10 @@ class Clusterer(object):
             dfh['cosa1'] = np.cos(dfh['a1'])
             
             ss = StandardScaler()
-   
-            if secondpass is True:
-                dfs = ss.fit_transform(dfh[FEATURE_MATRIX_2].values)
-                dfs = np.multiply(dfs, SCALED_DISTANCE_2)
-            else:
-                dfs = ss.fit_transform(dfh[FEATURE_MATRIX].values)
-                dfs = np.multiply(dfs, SCALED_DISTANCE)
-
+          
+            dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
+            dfs = np.multiply(dfs, self.model_parameters[1])
+    
             self.clusters = DBSCAN(eps=DBSCAN_LOCAL_EPS + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
 
             if ii==-STEPS:
@@ -159,50 +163,14 @@ class Clusterer(object):
                 dfh['s1'] = dfh['s1'].astype('int64')
                 self.clusters = dfh['s1'].values
                 dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-
-        # for ii in tqdm(np.arange(0, STEPS, 1)):
-        #     print ('\r steps: %d '%ii, end='',flush=True)            
-        #     dfh['za0'] = dfh.z/dfh.a0
-        #     dfh['a1'] = dfh['a0'] - (rr + STEPRR*rr**2)*ii/180*np.pi
-            
-        #     dfh['za1'] = dfh.z/dfh['a1']
-        #     dfh['z1a1'] = dfh['z1']/dfh['a1']
-        #     dfh['cur'] = np.absolute(dfh.r) / (dfh.r**2 + (dfh.z/dfh.a1)**2)
-        #         # parameter space
-        #     dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
-        #     dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
-
-
-        #     dfh['x2'] = 1/dfh['z1'] 
-        #     dfh['sina1'] = np.sin(dfh['a1'])
-        #     dfh['cosa1'] = np.cos(dfh['a1'])
-        #     dfh['xd'] = -dfh.x/dfh['d']
-        #     dfh['yd'] = -dfh.y/dfh['d']
-            
-        #     ss = StandardScaler()
-            
-        #     dfs = ss.fit_transform(dfh[FEATURE_MATRIX].values)
-
-        #     dfs = np.multiply(dfs, SCALED_DISTANCE)
-        #     clusters = DBSCAN(eps=DBSCAN_LOCAL_EPS - ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
-
-        #     dfh['s2'] = clusters
-        #     dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
-        #     maxs1 = dfh['s1'].max()
-        #     cond = np.where(dfh['N2'].values>dfh['N1'].values)
-        #     s1 = dfh['s1'].values
-        #     s1[cond] = dfh['s2'].values[cond]+maxs1
-        #     dfh['s1'] = s1
-        #     dfh['s1'] = dfh['s1'].astype('int64')
-        #     dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
         return dfh['s1'].values
 
-    def predict(self, hits, secondpass=False): 
-        self.clusters = self._init(hits, secondpass)        
+    def predict(self, hits): 
+        self.clusters = self._init(hits)        
             
         labels = np.unique(self.clusters)
         self._eliminate_outliers(labels)
-        if secondpass is True:
+        if self.cartesian is True:
             X = self._preprocess(hits) 
             max_len = np.max(self.clusters)
             self.clusters[self.clusters==0] = DBSCAN(eps=DBSCAN_GLOBAL_EPS,min_samples=1,algorithm='kd_tree', n_jobs=-1).fit(X[self.clusters==0]).labels_+max_len
@@ -226,7 +194,7 @@ def hack_one_last_run(labels, labels2, hits2):
         fix_ix = fix_ix + 1
     return labels2_x
 
-def run_predictions(all_labels, all_hits, model, model_parameters, unmatched_only=True, merge_labels=True, filter_hits=True, track_extension=True):
+def run_predictions(all_labels, all_hits, model, unmatched_only=True, merge_labels=True, filter_hits=True, track_extension=True):
     """ Run a round of predictions on all or a subset of remaining hits.
     Parameters:
       all_labels: Input np array of labeled tracks, where the index in all_labels matches
@@ -237,7 +205,6 @@ def run_predictions(all_labels, all_hits, model, model_parameters, unmatched_onl
       model: The model that predictions will be run on. This model must expose a
         'predict()' method that accepts the input hits to predict as the first parameter,
         and the input 'model_parameters' as the second input parameter.
-      model_parameters: Additional input parameters for the model performing predictions.
       unmatched_only: True iff only unmatched hits should be predicted. Unmatched hits are
         determined from the all_labels input array, where an unmatched hit contains a
         track ID of 0. False for this parameter means that all hits in the all_hits
@@ -263,7 +230,7 @@ def run_predictions(all_labels, all_hits, model, model_parameters, unmatched_onl
         hits_to_predict = hits_to_predict.drop(hits_to_predict.index[drop_indices])
 
     # Run predictions on the input model
-    new_labels = model.predict(hits_to_predict, model_parameters)
+    new_labels = model.predict(hits_to_predict)
 
     # Make sure max track ID is not larger than length of labels list.
     new_labels = sd.renumber_labels(new_labels)
@@ -321,15 +288,18 @@ def run_single_threaded_training(skip, nevents):
         
 
         # Helix unrolling track pattern recognition
-        model = Clusterer()
-
+        model_parameters = []
+        model_parameters.append(FEATURE_MATRIX)
+        model_parameters.append(SCALED_DISTANCE)
+        model = Clusterer(model_parameters)
+        
         label_file = 'event_' + str(event_id)+'_labels.csv'
         if os.path.exists(label_file):
             labels = pd.read_csv(label_file).label.values
         else:
             # For the first run, we do not have an input array of labels/tracks.
-            model_parameters=False # For now, input parameter to model is 'secondpass'
-            (labels, unfiltered_labels) = run_predictions(None, hits, model, model_parameters, unmatched_only=False, merge_labels=False, filter_hits=True, track_extension=True)
+            
+            (labels, unfiltered_labels) = run_predictions(None, hits, model, unmatched_only=False, merge_labels=False, filter_hits=True, track_extension=True)
             df = pd.DataFrame(labels)
             df.to_csv(label_file, index=False, header=['label'])
 
@@ -344,18 +314,33 @@ def run_single_threaded_training(skip, nevents):
 
         # Re-run our clustering algorithm on the remaining hits. If we add additional
         # rounds of predictions, we likely want to set filter_hits=True.
-        model2 = Clusterer()
-        model_parameters=True # For now, input parameter to model is 'secondpass'
-        (labels, _) = run_predictions(labels, hits, model2, model_parameters, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
+        model_parameters.clear()
+        model_parameters.append(FEATURE_MATRIX_2)
+        model_parameters.append(SCALED_DISTANCE_2)
+        model2 = Clusterer(model_parameters)
+        
+        (labels, unfiltered_labels) = run_predictions(labels, hits, model2, unmatched_only=True, merge_labels=True, filter_hits=True, track_extension=True)
 
         # Score for the event
-        one_submission = create_one_event_submission(event_id, hits, labels)
+        one_submission = create_one_event_submission(event_id, hits, unfiltered_labels)
         score = score_event(truth, one_submission)
-        print("2nd pass score for event %d: %.8f" % (event_id, score))
+        print("Unfiltered 2nd pass score for event %d: %.8f" % (event_id, score))
 
         # Un-comment this if you want to see the quality of the seeds generated.
         #valid_labels = sd.filter_invalid_tracks(labels3, hits, my_volumes, seed_length)
         #sd.count_truth_track_seed_hits(labels3, truth, seed_length, print_results=True)
+
+        model_parameters.clear()
+        model_parameters.append(FEATURE_MATRIX_3)
+        model_parameters.append(SCALED_DISTANCE_3)
+        model3 = Clusterer(model_parameters, cartesian=True)
+       
+        (labels, _) = run_predictions(labels, hits, model3, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
+
+        # Score for the event
+        one_submission = create_one_event_submission(event_id, hits, labels)
+        score = score_event(truth, one_submission)
+        print("3nd pass score for event %d: %.8f" % (event_id, score))
 
         # Append the final submission for this event, as well as the score.
         dataset_submissions.append(one_submission)
@@ -402,14 +387,25 @@ if __name__ == '__main__':
 
             # Helix unrolling track pattern recognition
             # For the first run, we do not have an input array of labels/tracks.
-            model = Clusterer()
-            model_parameters=False # For now, input parameter to model is 'secondpass'
-            (labels, _) = run_predictions(None, hits, model, model_parameters, unmatched_only=False, merge_labels=False, filter_hits=True, track_extension=True)
+            model_parameters = []
+            model_parameters.append(FEATURE_MATRIX)
+            model_parameters.append(SCALED_DISTANCE)
+            model = Clusterer(model_parameters)
+            (labels, _) = run_predictions(None, hits, model, unmatched_only=False, merge_labels=False, filter_hits=True, track_extension=True)
 
             # Re-run our clustering algorithm on the remaining hits
-            model2 = Clusterer()
-            model_parameters=True # For now, input parameter to model is 'secondpass'
-            (labels, _) = run_predictions(labels, hits, model2, model_parameters, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
+            model_parameters.clear()
+            model_parameters.append(FEATURE_MATRIX_2)
+            model_parameters.append(SCALED_DISTANCE_2)
+            model2 = Clusterer(model_parameters)
+            (labels, _) = run_predictions(labels, hits, model2, unmatched_only=True, merge_labels=True, filter_hits=True, track_extension=True)
+
+            model_parameters.clear()
+            model_parameters.append(FEATURE_MATRIX_3)
+            model_parameters.append(SCALED_DISTANCE_3)
+            model3 = Clusterer(model_parameters, cartesian=True)
+            (labels, _) = run_predictions(labels, hits, model3, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
+
 
             # Create our submission for this test event.
             one_submission = create_one_event_submission(event_id, hits, labels)
