@@ -78,9 +78,6 @@ print('scaled distance 5th pass: ' + str(SCALED_DISTANCE_5))
 print('Feature matrix 6th pass: ' + str(FEATURE_MATRIX_6))
 print('scaled distance 6th pass: ' + str(SCALED_DISTANCE_6))
 
-print('Feature matrix 7th pass: ' + str(FEATURE_MATRIX_7))
-print('scaled distance 7th pass: ' + str(SCALED_DISTANCE_7))
-
 print('rz scales: ' + str(RZ_SCALES))
 
 print('steprr: ' + str(STEPRR))
