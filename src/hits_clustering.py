@@ -24,10 +24,22 @@ import merge as merge
 RZ_SCALES = [0.4, 1.6, 0.5]
 SCALED_DISTANCE = [1,       1,       0.5, 0.125, 0.01, 0.01, 0.001, 0.001]
 FEATURE_MATRIX = ['sina1', 'cosa1', 'z1', 'z2', 'xd', 'yd', 'px', 'py']
-SCALED_DISTANCE_2 = [1,       1,       0.5, 0.01]
-FEATURE_MATRIX_2 = ['sina1', 'cosa1', 'z3', 'z1a1']
-SCALED_DISTANCE_3 = [1,       1,       0.5, 0.01]
-FEATURE_MATRIX_3 = ['sina1', 'cosa1', 'z1', 'z1a1']
+
+SCALED_DISTANCE_2 = [1,       1,       0.5, 0.01,  0.01, 0.01, 0.001, 0.001]
+FEATURE_MATRIX_2 = ['sina1', 'cosa1', 'z3', 'z1a1', 'xd', 'yd', 'px', 'py']
+
+
+SCALED_DISTANCE_3 = [1,       1,       0.5, 0.01,  0.01, 0.01, 0.001, 0.001]
+FEATURE_MATRIX_3 = ['sina1', 'cosa1', 'z1', 'z1a1',  'xd', 'yd', 'px', 'py']
+
+SCALED_DISTANCE_4 = [1,       1,       0.5, 0.125, 0.01, 0.01, 0.001, 0.001]
+FEATURE_MATRIX_4= ['sina1', 'cosa1', 'z4', 'z1', 'xd', 'yd', 'px', 'py']
+
+SCALED_DISTANCE_5 = [0.5,       0.5,       0.25, 0.5, 0.01, 0.01, 0.001, 0.001]
+FEATURE_MATRIX_5 = ['sina1', 'cosa1', 'z1', 'z2', 'xd', 'yd', 'px', 'py']
+
+SCALED_DISTANCE_6 = [0.5,       0.5,       0.25, 0.02,  0.01, 0.01, 0.001, 0.001]
+FEATURE_MATRIX_6 = ['sina1', 'cosa1', 'z3', 'z1a1', 'xd', 'yd', 'px', 'py']
 
 
 DBSCAN_GLOBAL_EPS = 0.0075
@@ -57,9 +69,16 @@ print('scaled distance 2nd pass: ' + str(SCALED_DISTANCE_2))
 print('Feature matrix 3rd pass: ' + str(FEATURE_MATRIX_3))
 print('scaled distance 3rd pass: ' + str(SCALED_DISTANCE_3))
 
+print('Feature matrix 4th pass: ' + str(FEATURE_MATRIX_4))
+print('scaled distance 4th pass: ' + str(SCALED_DISTANCE_4))
 
+print('Feature matrix 5th pass: ' + str(FEATURE_MATRIX_5))
+print('scaled distance 5th pass: ' + str(SCALED_DISTANCE_5))
 
-#print('rz scales: ' + str(RZ_SCALES))
+print('Feature matrix 6th pass: ' + str(FEATURE_MATRIX_6))
+print('scaled distance 6th pass: ' + str(SCALED_DISTANCE_6))
+
+print('rz scales: ' + str(RZ_SCALES))
 
 print('steprr: ' + str(STEPRR))
 print('stepeps: ' + str(STEPEPS))
@@ -120,12 +139,16 @@ class Clusterer(object):
         dfh['z1'] = dfh['z']/dfh['r'] 
         dfh['z2'] = dfh['z']/dfh['d']
         dfh['z3'] = np.log1p(np.absolute(dfh.z/dfh.r))*np.sign(dfh.z)
+        dfh['z4'] = np.arccos(dfh.z/dfh.d)
+        dfh['z5'] = (dfh.r - np.absolute(dfh.z))/dfh.r
+      
         dfh['za0'] = dfh.z/dfh.a0
         rr = dfh['r']/1000
         dfh['rd'] = dfh['r']/dfh['d']
         dfh['xy'] = dfh.x/dfh.y
         dfh['xd'] = dfh.x/dfh['d']
         dfh['yd'] = dfh.y/dfh['d']
+        
 
         for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
             print ('\r steps: %d '%ii, end='',flush=True)
@@ -310,9 +333,11 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
     # rather than re-generating.
     label_file = 'event_' + str(event_id)+'_labels_' + label_identifier + '.csv'
     if os.path.exists(label_file):
+        print(str(event_id) + ': load ' + label_file)
         labels = pd.read_csv(label_file).label.values
         return labels
 
+    print(str(event_id) + ': clustering on ' + label_identifier)
     # Helix unrolling track pattern recognition
     #model_parameters = []
     #model_parameters.append(FEATURE_MATRIX)
@@ -332,12 +357,6 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
         score = score_event(truth, one_submission)
         print("Filtered 1st pass score for event %d: %.8f" % (event_id, score))
 
-    # Re-run our clustering algorithm on the remaining hits. If we add additional
-    # rounds of predictions, we likely want to set filter_hits=True.
-    #model_parameters.clear()
-    #model_parameters.append(FEATURE_MATRIX_2)
-    #model_parameters.append(SCALED_DISTANCE_2)
-    #model2 = Clusterer(model_parameters)
     
     (labels, unfiltered_labels) = run_predictions(labels, hits, model, unmatched_only=True, merge_labels=True, filter_hits=True, track_extension=True)
 
@@ -353,11 +372,8 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
         #labels = sd.filter_invalid_tracks(labels, hits, my_volumes, seed_length)
         #sd.count_truth_track_seed_hits(labels, truth, seed_length, print_results=True)
 
-    #model_parameters.clear()
-    #model_parameters.append(FEATURE_MATRIX_3)
-    #model_parameters.append(SCALED_DISTANCE_3)
-    #model3 = Clusterer(model_parameters, cartesian=True)
-    
+
+    model = Clusterer(model_parameters)
     (labels, _) = run_predictions(labels, hits, model, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
 
     # Save the generated labels, can avoid re-generation next run.
@@ -395,6 +411,21 @@ def run_single_threaded_training(skip, nevents):
         model_parameters.append(SCALED_DISTANCE_3)
         labels_helix3 = run_helix_unrolling_predictions(event_id, hits, truth, 'train_helix3', model_parameters)
 
+        model_parameters.clear()
+        model_parameters.append(FEATURE_MATRIX_4)
+        model_parameters.append(SCALED_DISTANCE_4)
+        labels_helix4 = run_helix_unrolling_predictions(event_id, hits, truth, 'train_helix4', model_parameters)
+
+        model_parameters.clear()
+        model_parameters.append(FEATURE_MATRIX_5)
+        model_parameters.append(SCALED_DISTANCE_5)
+        labels_helix5 = run_helix_unrolling_predictions(event_id, hits, truth, 'train_helix5', model_parameters)
+
+        model_parameters.clear()
+        model_parameters.append(FEATURE_MATRIX_6)
+        model_parameters.append(SCALED_DISTANCE_6)
+        labels_helix6 = run_helix_unrolling_predictions(event_id, hits, truth, 'train_helix6', model_parameters)
+
         # Do cone slicing, use heuristic merge to combine with helix unrolling
         labels_cone = run_cone_slicing_predictions(event_id, hits, 'train_cone')
 
@@ -403,7 +434,10 @@ def run_single_threaded_training(skip, nevents):
         labels_helix1 = merge.remove_outliers(labels_helix1, hits, print_counts=False)
         labels_helix2 = merge.remove_outliers(labels_helix2, hits, print_counts=False)
         labels_helix3 = merge.remove_outliers(labels_helix3, hits, print_counts=False)
-
+        labels_helix4 = merge.remove_outliers(labels_helix4, hits, print_counts=False)
+        labels_helix5 = merge.remove_outliers(labels_helix5, hits, print_counts=False)
+        labels_helix6 = merge.remove_outliers(labels_helix6, hits, print_counts=False)
+        
         labels = merge.heuristic_merge_tracks(labels_helix1, labels_helix2, print_summary=False)
         one_submission = create_one_event_submission(event_id, hits, labels)
         score = score_event(truth, one_submission)
@@ -414,14 +448,32 @@ def run_single_threaded_training(skip, nevents):
         score = score_event(truth, one_submission)
         print("Merged helix1&2&3 unrolling for event %d: %.8f" % (event_id, score))
 
-        labels = merge.heuristic_merge_tracks(labels, labels_cone, print_summary=False)
+        labels = merge.heuristic_merge_tracks(labels, labels_helix4, print_summary=False)
         one_submission = create_one_event_submission(event_id, hits, labels)
         score = score_event(truth, one_submission)
-        print("Merged helix1&2&3 unrolling and cone slicing for event %d: %.8f" % (event_id, score))
+        print("Merged helix1&2&3&4 unrolling for event %d: %.8f" % (event_id, score))
 
-        #one_submission = create_one_event_submission(event_id, hits, labels)
-        #score = score_event(truth, one_submission)
-        #print("Merged helix unrolling and cone slicing for event %d: %.8f" % (event_id, score))
+        labels = merge.heuristic_merge_tracks(labels, labels_helix5, print_summary=False)
+        one_submission = create_one_event_submission(event_id, hits, labels)
+        score = score_event(truth, one_submission)
+        print("Merged helix1&2&3&4&5 unrolling for event %d: %.8f" % (event_id, score))
+
+        labels = merge.heuristic_merge_tracks(labels, labels_helix6, print_summary=False)
+        one_submission = create_one_event_submission(event_id, hits, labels)
+        score = score_event(truth, one_submission)
+        print("Merged helix1&2&3&4&5&6 unrolling for event %d: %.8f" % (event_id, score))
+
+        # labels = merge.heuristic_merge_tracks(labels, labels_cone, print_summary=False)
+        # one_submission = create_one_event_submission(event_id, hits, labels)
+        # score = score_event(truth, one_submission)
+        # print("Merged All unrolling and cone slicing for event %d: %.8f" % (event_id, score))
+
+        # Un-comment this if you want to see the quality of the seeds generated.
+        #seed_length = 5
+        #my_volumes = [7, 8, 9]
+        #labels = sd.filter_invalid_tracks(labels, hits, my_volumes, seed_length)
+        #sd.count_truth_track_seed_hits(labels, truth, seed_length, print_results=True)
+
 
         # Append the final submission for this event, as well as the score.
         dataset_submissions.append(one_submission)
@@ -478,18 +530,42 @@ if __name__ == '__main__':
             model_parameters.append(SCALED_DISTANCE_3)
             labels_helix3 = run_helix_unrolling_predictions(event_id, hits, None, 'test_helix3', model_parameters)
 
+            model_parameters.clear()
+            model_parameters.append(FEATURE_MATRIX_4)
+            model_parameters.append(SCALED_DISTANCE_4)
+            labels_helix4 = run_helix_unrolling_predictions(event_id, hits, None, 'test_helix4', model_parameters)
+
+            model_parameters.clear()
+            model_parameters.append(FEATURE_MATRIX_5)
+            model_parameters.append(SCALED_DISTANCE_5)
+            labels_helix5 = run_helix_unrolling_predictions(event_id, hits, None, 'test_helix5', model_parameters)
+
+            model_parameters.clear()
+            model_parameters.append(FEATURE_MATRIX_6)
+            model_parameters.append(SCALED_DISTANCE_6)
+            labels_helix6 = run_helix_unrolling_predictions(event_id, hits, None, 'test_helix6', model_parameters)
+
+            
+
+
             # Do cone slicing, use heuristic merge to combine with helix unrolling
-            labels_cone = run_cone_slicing_predictions(event_id, hits, 'test_cone')
+            #labels_cone = run_cone_slicing_predictions(event_id, hits, 'test_cone')
 
             # Merge results from two sets of predictions, removing outliers first
-            labels_cone = merge.remove_outliers(labels_cone, hits, print_counts=False)
+            #labels_cone = merge.remove_outliers(labels_cone, hits, print_counts=False)
             labels_helix1 = merge.remove_outliers(labels_helix1, hits, print_counts=False)
             labels_helix2 = merge.remove_outliers(labels_helix2, hits, print_counts=False)
             labels_helix3 = merge.remove_outliers(labels_helix3, hits, print_counts=False)
+            labels_helix4 = merge.remove_outliers(labels_helix4, hits, print_counts=False)
+            labels_helix5 = merge.remove_outliers(labels_helix5, hits, print_counts=False)
+            labels_helix6 = merge.remove_outliers(labels_helix6, hits, print_counts=False)
 
             labels = merge.heuristic_merge_tracks(labels_helix1, labels_helix2, print_summary=False)
             labels = merge.heuristic_merge_tracks(labels, labels_helix3, print_summary=False)
-            labels = merge.heuristic_merge_tracks(labels, labels_cone, print_summary=False)
+            labels = merge.heuristic_merge_tracks(labels, labels_helix4, print_summary=False)
+            labels = merge.heuristic_merge_tracks(labels, labels_helix5, print_summary=False)
+            labels = merge.heuristic_merge_tracks(labels, labels_helix6, print_summary=False)
+            #labels = merge.heuristic_merge_tracks(labels, labels_cone, print_summary=False)
 
             # Create our submission for this test event.
             one_submission = create_one_event_submission(event_id, hits, labels)
