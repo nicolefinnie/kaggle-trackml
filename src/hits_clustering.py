@@ -345,7 +345,8 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
     model = Clusterer(model_parameters)
     
     # For the first run, we do not have an input array of labels/tracks.
-    (labels, unfiltered_labels) = run_predictions(None, hits, model, unmatched_only=False, merge_labels=False, filter_hits=True, track_extension=True)
+    (labels, unfiltered_labels) = run_predictions(None, hits, model, unmatched_only=False, merge_labels=False, filter_hits=False, track_extension=True)
+    labels = merge.remove_outliers(labels, hits, smallest_track_size=5, print_counts=False)
 
     if truth is not None:
         one_submission = create_one_event_submission(event_id, hits, unfiltered_labels)
@@ -358,7 +359,8 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
         print("Filtered 1st pass score for event %d: %.8f" % (event_id, score))
 
     
-    (labels, unfiltered_labels) = run_predictions(labels, hits, model, unmatched_only=True, merge_labels=True, filter_hits=True, track_extension=True)
+    (labels, unfiltered_labels) = run_predictions(labels, hits, model, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
+    labels = merge.remove_outliers(labels, hits, smallest_track_size=4, print_counts=False)
 
     if truth is not None:
         # Score for the event
@@ -427,10 +429,10 @@ def run_single_threaded_training(skip, nevents):
         labels_helix6 = run_helix_unrolling_predictions(event_id, hits, truth, 'train_helix6', model_parameters)
 
         # Do cone slicing, use heuristic merge to combine with helix unrolling
-        labels_cone = run_cone_slicing_predictions(event_id, hits, 'train_cone')
+        #labels_cone = run_cone_slicing_predictions(event_id, hits, 'train_cone')
+        #labels_cone = merge.remove_outliers(labels_cone, hits, print_counts=False)
 
         # Merge results from two sets of predictions, removing outliers first
-        labels_cone = merge.remove_outliers(labels_cone, hits, print_counts=False)
         labels_helix1 = merge.remove_outliers(labels_helix1, hits, print_counts=False)
         labels_helix2 = merge.remove_outliers(labels_helix2, hits, print_counts=False)
         labels_helix3 = merge.remove_outliers(labels_helix3, hits, print_counts=False)
