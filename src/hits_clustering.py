@@ -345,8 +345,8 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
     model = Clusterer(model_parameters)
     
     # For the first run, we do not have an input array of labels/tracks.
-    (labels, unfiltered_labels) = run_predictions(None, hits, model, unmatched_only=False, merge_labels=False, filter_hits=False, track_extension=True)
-    labels = merge.remove_outliers(labels, hits, smallest_track_size=5, print_counts=False)
+    (labels, unfiltered_labels) = run_predictions(None, hits, model, unmatched_only=False, merge_labels=False, filter_hits=True, track_extension=True)
+    labels = merge.remove_outliers(labels, hits, print_counts=False)
 
     if truth is not None:
         one_submission = create_one_event_submission(event_id, hits, unfiltered_labels)
@@ -359,8 +359,8 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
         print("Filtered 1st pass score for event %d: %.8f" % (event_id, score))
 
     
-    (labels, unfiltered_labels) = run_predictions(labels, hits, model, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
-    labels = merge.remove_outliers(labels, hits, smallest_track_size=4, print_counts=False)
+    (labels, unfiltered_labels) = run_predictions(labels, hits, model, unmatched_only=True, merge_labels=True, filter_hits=True, track_extension=True)
+    labels = merge.remove_outliers(labels, hits, print_counts=False)
 
     if truth is not None:
         # Score for the event

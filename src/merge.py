@@ -3,6 +3,8 @@ import pandas as pd
 import math
 import collections as coll
 
+from sklearn.cluster import DBSCAN
+from sklearn.preprocessing import StandardScaler
 
 def renumber_labels(labels):
     new_label = 0
@@ -198,6 +200,7 @@ def heuristic_merge_tracks(labels1, labels2, print_summary=True):
 
     return labels_merged
 
+
 # FIXME: Need to evaluate this better, seems to hurt!
 def find_invalid_volumes(track, labels, df):
     invalid_ix = []
@@ -212,10 +215,10 @@ def find_invalid_volumes(track, labels, df):
     layers = df2.layer_id.values
     last_volume = volumes[0]
     last_layer = layers[0]
-    # Tracks with the first volume of 8 or 13 are very odd, sometimes
+    # Tracks with the first volume of 8, 13, and 17 are very odd, sometimes
     # they hit in the negative way, sometimes the positive way,
     # sometimes a mix of both. Ignore these.
-    if last_volume == 8 or last_volume == 13:
+    if last_volume == 8 or last_volume == 13 or last_volume == 17:
         all_negative = False
         all_positive = False
     for idx, cur_vol in enumerate(volumes):
@@ -285,13 +288,13 @@ def find_dimension_outlier(track, labels, df, dimension):
 
         largest_is_outlier = False
         smallest_is_outlier = False
-        if large1 > 0 and large2 > 0 and large1 > 1.0 and large2 > 0.5 and (large2*15) < large1:
+        if large1 > 0 and large2 > 0 and large1 > 10.0 and large2 > 2.0 and (large2*7) < large1:
             largest_is_outlier = True
-        if large1 < 0 and large2 < 0 and large1 < -1.0 and large2 < -0.5 and (large1*15) > large2:
+        if large1 < 0 and large2 < 0 and large1 < -10.0 and large2 < -2.0 and (large1*7) > large2:
             largest_is_outlier = True
-        if small1 > 0 and small2 > 0 and small1 > 1.0 and small2 > 0.5 and (small2*15) < small1:
+        if small1 > 0 and small2 > 0 and small1 > 10.0 and small2 > 2.0 and (small2*7) < small1:
             smallest_is_outlier = True
-        if small1 < 0 and small2 < 0 and small1 < -1.0 and small2 < -0.5 and (small1*15) > small2:
+        if small1 < 0 and small2 < 0 and small1 < -10.0 and small2 < -2.0 and (small1*7) > small2:
             smallest_is_outlier = True
 
         if largest_is_outlier or smallest_is_outlier:
@@ -324,9 +327,11 @@ def find_dimension_outlier(track, labels, df, dimension):
 
     # Restrict to when the majority of diffs are either positive or negative.
     # (more difficult to detect outliers if diffs oscillate -ve and +ve)
+    dim_vals = df2[dimension].values
     if len(neg_diffs) >= math.ceil(0.75*len(diffs)):
         # remove large positive ones.
         growing_trend = 0
+        previous_diff = 0
         for idx, diff in enumerate(diffs):
             # Some tracks trend from negative to positive diffs, don't eliminate
             # positive values if it looks like we are trending that way.
@@ -338,10 +343,28 @@ def find_dimension_outlier(track, labels, df, dimension):
                 growing_trend = 0
             # Use absolute value > 1.0 in case there is small delta each time,
             # we only try to find big jumps in the wrong direction.
-            #print('nidx: ' + str(idx) + ', diff: ' + str(diff) + ', df ix: ' + str(hit_ix2[idx+1]))
+            #print('nidx-' + dimension + ': ' + str(idx) + ', diff: ' + str(diff) + ', df ix: ' + str(hit_ix2[idx+1]))
             if diff > 1.0:
-                #print('Removing: ' + str(hit_ix2[idx+1]))
-                outlier_ix.append(hit_ix2[idx + 1])
+                # We sometimes see cases like:
+                # diff[n-1] = -22
+                # diff[n] = 12
+                # diff[n+1] = -14
+                # In this case, we want to remove n-1 as the outlier, since if that
+                # was gone, diff[n] would be -10, which is more reasonable.
+                # In cases where we see:
+                # diff[0] = 23
+                # diff[1] = -5
+                # We want to check the dimension values directly instead of the diffs, it
+                # could be that val[0] is the outlier.
+                if idx == 0 and dim_vals[1] > dim_vals[2] and dim_vals[0] < dim_vals[2]:
+                    # The real outlier is the first entry in the list.
+                    outlier_ix.append(hit_ix2[0])
+                elif idx == 0 or idx == (len(diffs)-1) or ((diff + diffs[idx-1]) > 0) or diffs[idx+1] > 0:
+                    #print('Removing: ' + str(hit_ix2[idx+1]))
+                    outlier_ix.append(hit_ix2[idx + 1])
+                else:
+                    # The real outlier is the previous one (i.e. diff[n-1] in the example above!
+                    outlier_ix.append(hit_ix2[idx])
     
     elif len(pos_diffs) >= math.ceil(0.75*len(diffs)):
         # remove large negative ones
@@ -357,10 +380,22 @@ def find_dimension_outlier(track, labels, df, dimension):
                 shrinking_trend = 0
             # Use absolute value > 1.0 in case there is small delta each time,
             # we only try to find big jumps in the wrong direction.
-            #print('pidx: ' + str(idx) + ', diff: ' + str(diff) + ', df ix: ' + str(hit_ix2[idx+1]))
+            #print('pidx-' + dimension + ': ' + str(idx) + ', diff: ' + str(diff) + ', df ix: ' + str(hit_ix2[idx+1]))
             if diff < -1.0:
                 #print('Removing: ' + str(hit_ix2[idx+1]))
-                outlier_ix.append(hit_ix2[idx + 1])
+                # Similar to the negative case above, make sure we remove the real
+                # outlier, in case the previous diff was misleading.
+                if idx == 0 and dim_vals[1] < dim_vals[2] and dim_vals[0] > dim_vals[2]:
+                    # The real outlier is the first entry in the list.
+                    outlier_ix.append(hit_ix2[0])
+                elif idx == 0 or idx == (len(diffs)-1) or ((diff + diffs[idx-1]) < 0) or diffs[idx+1] < 0:
+                    #print('Removing: ' + str(hit_ix2[idx+1]))
+                    outlier_ix.append(hit_ix2[idx + 1])
+                else:
+                    # The real outlier is the previous one (i.e. diff[n-1] in the example above!
+                    outlier_ix.append(hit_ix2[idx])
+
+
 
     # Future ideas for patterns:
     # - average positive jump + average negative jump, for values that oscillate +ve and -ve
@@ -391,6 +426,12 @@ def find_duplicate_z(track, labels, df):
     zs = df2.z.values
     max_idx = len(zs) - 1
 
+    z_counts = coll.Counter(df2.z.values).most_common(len(df2.z.values))
+
+    # Idea: Find duplicate adjacent z-values. Remember x and y before and after the
+    # duplicates. Choose z that lies between the two. If z at beginning or end,
+    # need the two post (or pre-) x/y values to see the expected sign of the diff.
+
     if zs[0] == zs[1]:
         # zs at the beginning
         x1 = xs[2]
@@ -400,9 +441,12 @@ def find_duplicate_z(track, labels, df):
         if numbers_are_between(xs[0], x1, x2, ys[0], y1, y2) and not numbers_are_between(xs[1], x1, x2, ys[1], y1, y2):
             # The first one is more consistent, delete the 2nd duplicate value
             duplicatez_ix.append(hit_ix2[1])
+            #print('xs[1] ' + str(xs[1]) + ' <= x1 ' + str(x1) + ' <= x2 ' + str(x2))
+            #print('ys[1] ' + str(ys[1]) + ' <= y1 ' + str(y1) + ' <= y2 ' + str(y2))
         elif numbers_are_between(xs[1], x1, x2, ys[1], y1, y2) and not numbers_are_between(xs[0], x1, x2, ys[0], y1, y2):
             # The second one is more consistent, delete the 1st duplicate value
             duplicatez_ix.append(hit_ix2[0])
+            #print('b')
         elif numbers_are_between(xs[0], x1, x2, ys[0], y1, y2) and numbers_are_between(xs[1], x1, x2, ys[1], y1, y2):
             # Both z-values seem reasonable, need a tie-breaker to find out which is the right one.
             add_code_here = True
@@ -425,10 +469,6 @@ def find_duplicate_z(track, labels, df):
             add_code_here = True
         # else, neither seem valid, unsure how to proceed, better off not rejecting any.
         
-    # Idea: Find duplicate adjacent z-values. Remember x and y before and after the
-    # duplicates. Choose z that lies between the two. If z at beginning or end,
-    # need the two post (or pre-) x/y values to see the expected sign of the diff.
-
     # Note max_idx is largest valid index, we already handled the case where the
     # duplicate zs are at the beginning or end of the list.
     for idx in range(0, max_idx):
@@ -448,16 +488,145 @@ def find_duplicate_z(track, labels, df):
                 # Both z-values seem reasonable, need a tie-breaker to find out which is the right one.
                 add_code_here = True
             # else, neither seem valid, unsure how to proceed, better off not rejecting any.
-            
+
+    #if z_counts[0][1] > 1:
+    #    print('Duplicatez found on track ' + str(track) + ', removed: ' + str(duplicatez_ix))
+
     return duplicatez_ix
 
+# TODO pi, -pi discontinuity 
+def remove_track_outliers_slope(track, labels, hits, debug=False):
+    final_outliers = []
+
+    hhh_ix = np.where(labels == track)
+    hhh_h = hits.loc[hhh_ix].sort_values('z')
+    
+    slopes_backward = []
+    slopes_forward = []
+
+    num_hits = len(hhh_h)
+    # Only reliable with tracks >= 5 hits
+    if num_hits < 5:
+        return final_outliers
+
+    if debug: print('backward:')
+    for i in np.arange(num_hits-1,0,-1):
+        a0 =  hhh_h.a0.values[i]
+        a1 =  hhh_h.a0.values[i-1]
+        r0 =  hhh_h.r.values[i]
+        r1 =  hhh_h.r.values[i-1]
+        if r0 == r1:
+            r0 = r0 + 1e-8
+        slope = (a0-a1)/(r0-r1) 
+        slopes_backward.append(slope)
+        if debug: print(hhh_h.hit_id.values[i], slope, a0)
+        if i == 1:
+            a0 = hhh_h.a0.values[0]
+            a1 = hhh_h.a0.values[num_hits-1]
+            r0 =  hhh_h.r.values[0]
+            r1 =  hhh_h.r.values[num_hits-1]
+            if r0 == r1:
+                r0 = r0 + 1e-8
+            slope = (a0-a1)/(r0-r1)
+            slopes_backward.append(slope)
+            if debug: print(hhh_h.hit_id.values[0], slope, a1)
+
+    if debug: print('forward:')
+    for i in np.arange(0,num_hits-1,1):
+        a0 =  hhh_h.a0.values[i]
+        a1 =  hhh_h.a0.values[i+1]
+        r0 =  hhh_h.r.values[i]
+        r1 =  hhh_h.r.values[i+1]
+        if r0 == r1:
+            r1 = r1 + 1e-8
+        slope = (a1-a0)/(r1-r0) 
+        slopes_forward.append(slope)
+        if debug: print(hhh_h.hit_id.values[i], slope, a0)
+
+        if i == num_hits-2:
+            a0 = hhh_h.a0.values[0]
+            a1 = hhh_h.a0.values[num_hits-1]
+            r0 =  hhh_h.r.values[0]
+            r1 =  hhh_h.r.values[num_hits-1]
+            if r0 == r1:
+                r1 = r1 + 1e-8
+            slope = (a1-a0)/(r1-r0) 
+            slopes_forward.append(slope)
+            if debug: print(hhh_h.hit_id.values[num_hits-1], slope, a0)
+
+    slopes_backward = np.asarray(slopes_backward)
+    slopes_backward = np.reshape(slopes_backward, (-1, 1))
+    slopes_forward = np.asarray(slopes_forward)
+    slopes_forward = np.reshape(slopes_forward, (-1, 1))
+
+    ss = StandardScaler()
+    X_back = ss.fit_transform(slopes_backward)
+    X_for = ss.fit_transform(slopes_forward)
+
+    cl = DBSCAN(eps=0.0033, min_samples=1)
+    outlier_labels_backward = cl.fit_predict(X_back)
+    outlier_labels_forward = cl.fit_predict(X_for)
+
+    if debug: print(outlier_labels_backward)
+    if debug: print(outlier_labels_forward)
+
+    track_counts = coll.Counter(outlier_labels_backward).most_common(1)
+    most_common_id = track_counts[0][0]
+    most_common_count = track_counts[0][1]
+
+    outlier_indices_backward = []
+    if most_common_count > 1 and len(np.unique(outlier_labels_forward)) < num_hits/2:
+        for i in np.arange(num_hits-1,-1,-1):
+            if outlier_labels_backward[i] != most_common_id:
+                if debug: print(hhh_h.index.values[num_hits-1-i])
+                outlier_indices_backward.append(hhh_h.index.values[num_hits-1-i])
+
+    track_counts = coll.Counter(outlier_labels_forward).most_common(1)
+    most_common_id = track_counts[0][0]
+    most_common_count = track_counts[0][1]
+
+
+    outlier_indices_forward = []
+    if most_common_count > 1 and len(np.unique(outlier_labels_forward)) < num_hits/2:
+        for i in np.arange(0,num_hits-1,1):
+            if outlier_labels_forward[i] != most_common_id:
+                if debug: print(hhh_h.index.values[i])
+                outlier_indices_forward.append(hhh_h.index.values[i])
+
+
+    outlier_candidates = list(set(outlier_indices_backward).intersection(outlier_indices_forward))
+
+
+    if debug: print('before removal:' + str(outlier_candidates))
+
+    for i in range(len(outlier_candidates)):
+        candidate = hhh_h.loc[outlier_candidates[i]]
+        found = False
+        for index, row in hhh_h.iterrows():
+            if np.absolute(candidate.z-row.z) == 0.5 and candidate.volume_id == row.volume_id \
+            and candidate.layer_id == row.layer_id and candidate.module_id != row.module_id:
+                # true hits
+                if debug: print('true hit' + str(outlier_candidates[i]))
+                found = True
+        if found is False:
+            final_outliers.append(outlier_candidates[i])
+
+    if debug: print('new loutliers:' + str(final_outliers))
+
+    # If we determine that half (or more) of the hits need to be removed, we may have messed
+    # up, so do not return any outliers.
+    max_removal_threshold = math.floor(num_hits/2)
+    if len(final_outliers) >= max_removal_threshold:
+        final_outliers = []
+
+    return final_outliers
 
     
-def remove_track_outliers(track, labels, hits, aggressive_removal=False):
+def remove_track_outliers(track, labels, hits, aggressive):
     labels = np.copy(labels)
-    hits['z_abs'] = hits.z.abs()
     found_bad_volume = 0
     found_bad_dimension = 0
+    found_bad_slope = 0
     found_bad_z = 0
 
     # Check if the sorted hits (on z-axis) go through the volumes
@@ -469,18 +638,26 @@ def remove_track_outliers(track, labels, hits, aggressive_removal=False):
         for bvix in bad_volume_ix:
             labels[bvix] = 0
 
-    # Check if the sorted hits (on z-axis) go through the volumes
-    # and layers in the expected order
-    duplicatez_ix = find_duplicate_z(track, labels, hits)
-    if len(duplicatez_ix) > 0:
-        #print('track ' + str(track) + ' duplicate z: ' + str(duplicatez_ix))
-        found_bad_z = found_bad_z + len(duplicatez_ix)
-        for bzix in duplicatez_ix:
-            labels[bzix] = 0
-            
-    # So far, this seems to remove too many false positives. More analysis is
-    # needed to refine this outlier removal method.
-    if aggressive_removal:
+    if True:
+        # Check if the sorted hits (on z-axis) go through the volumes
+        # and layers in the expected order
+        duplicatez_ix = find_duplicate_z(track, labels, hits)
+        if len(duplicatez_ix) > 0:
+            #print('track ' + str(track) + ' duplicate z: ' + str(duplicatez_ix))
+            found_bad_z = found_bad_z + len(duplicatez_ix)
+            for bzix in duplicatez_ix:
+                labels[bzix] = 0
+
+    if True:
+        # Check the helix slope, discard hits that do not match
+        outlier_slope_ix = remove_track_outliers_slope(track, labels, hits)
+        if len(outlier_slope_ix) > 0:
+            #print('track ' + str(track) + ' slope outliers: ' + str(outlier_slope_ix))
+            found_bad_slope = found_bad_slope + len(outlier_slope_ix)
+            for oix in outlier_slope_ix:
+                labels[oix] = 0
+
+    if aggressive:
         # Next analysis, from remaining hits, sort by 'z' (roughly time-based),
         # check for anomolies in other dimensions.
         outlier_ix = find_dimension_outlier(track, labels, hits, 'y')
@@ -499,23 +676,28 @@ def remove_track_outliers(track, labels, hits, aggressive_removal=False):
             for oix in outlier_ix:
                 labels[oix] = 0
             
-    return (labels, found_bad_volume, found_bad_dimension, found_bad_z)
+    return (labels, found_bad_volume, found_bad_dimension, found_bad_z, found_bad_slope)
 
-def remove_outliers(labels, hits, smallest_track_size=2, aggressive_removal=False, print_counts=True):
+def remove_outliers(labels, hits, smallest_track_size=2, aggressive=False, print_counts=True):
     tracks = np.unique(labels)
+    hits['z_abs'] = hits.z.abs()
+    hits['r'] = np.sqrt(hits.x**2+hits.y**2)
+    hits['a0'] = np.arctan2(hits.y,hits.x)
     count_rem_volume = 0
     count_rem_dimension = 0
     count_duplicatez = 0
+    count_rem_slope = 0
     count_small_tracks = 0
     for track in tracks:
         if track == 0:
             continue
         track_hits = np.where(labels == track)[0]
         if len(track_hits) > 3:
-            (labels, c1, c2, c3) = remove_track_outliers(track, labels, hits, aggressive_removal=aggressive_removal)
+            (labels, c1, c2, c3, c4) = remove_track_outliers(track, labels, hits, aggressive)
             count_rem_volume = count_rem_volume + c1
             count_rem_dimension = count_rem_dimension + c2
             count_duplicatez = count_duplicatez + c3
+            count_rem_slope = count_rem_slope + c4
 
     # Remove singletons, we do not get any score for those. This is done
     # last, in case removing the outliers (above) removed enough hits
@@ -533,6 +715,7 @@ def remove_outliers(labels, hits, smallest_track_size=2, aggressive_removal=Fals
         print('Total removed due to bad volumes: ' + str(count_rem_volume))
         print('Total removed due to bad dimensions: ' + str(count_rem_dimension))
         print('Total removed due to duplicate zs: ' + str(count_duplicatez))
-        print('Total removed small tracks (<' + str(smallest_track_size) + ' hits): ' + str(count_small_tracks))
+        print('Total removed due to bad slopes: ' + str(count_rem_slope))
+        print('Total removed small tracks (<' + str(small_track_hits) + ') hits: ' + str(count_small_tracks))
 
     return labels
