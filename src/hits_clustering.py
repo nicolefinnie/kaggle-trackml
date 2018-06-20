@@ -621,7 +621,7 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
         score = score_event(truth, one_submission)
         print("Filtered 1st pass score for event %d: %.8f" % (event_id, score))
 
-    label_file_root1 = label_file_root + '_phase2'
+    label_file_root2 = label_file_root + '_phase2'
     model = Clusterer(model_parameters)
     (labels) = run_predictions(event_id, labels, hits, truth, model, label_file_root2, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
 
@@ -640,7 +640,7 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
     df = pd.DataFrame(labels)
     df.to_csv(label_file, index=False, header=['label'])
 
-    # label_file_root1 = label_file_root + '_phase3'
+    # label_file_root3 = label_file_root + '_phase3'
     # model = Clusterer(model_parameters)
     # (labels) = run_predictions(event_id, labels, hits, truth, model, label_file_root3, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
 
