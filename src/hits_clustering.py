@@ -110,7 +110,12 @@ class Clusterer(object):
                 self.clusters[self.clusters==cluster]=0  
 
 
-    def _dbscan(self, dfh):
+    def _dbscan(self, dfh, label_file_root):
+        label_file1 = label_file_root + '_dbscan1.csv'
+        label_file2 = label_file_root + '_dbscan2.csv'
+        label_file3 = label_file_root + '_dbscan3.csv'
+        label_file4 = label_file_root + '_dbscan4.csv'
+
         dfh['d'] = np.sqrt(dfh.x**2+dfh.y**2+dfh.z**2)
         dfh['r'] = np.sqrt(dfh.x**2+dfh.y**2)
         dfh['z1'] = dfh['z']/dfh['r'] 
@@ -126,178 +131,201 @@ class Clusterer(object):
         dfh['xd'] = dfh.x/dfh['d']
         dfh['yd'] = dfh.y/dfh['d']
 
+        if os.path.exists(label_file1):
+            print('Loading dbscan loop 1 file: ' + label_file1)
+            labels_loop1 = pd.read_csv(label_file1).label.values
+        else:
+            for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
+                print ('\r steps: %d '%ii, end='',flush=True)
+                dfh['a1'] = dfh['a0'] + (rr + self.model_parameters[2][0]*rr**2)*ii/180*np.pi
+                dfh['za1'] = dfh.z/dfh['a1']
+                dfh['z1a1'] = dfh['z1']/dfh['a1']
+                dfh['rcos'] = dfh.r/np.cos(dfh.a1 - dfh.a0)
 
-        for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
-            print ('\r steps: %d '%ii, end='',flush=True)
-            dfh['a1'] = dfh['a0'] + (rr + self.model_parameters[2][0]*rr**2)*ii/180*np.pi
-            dfh['za1'] = dfh.z/dfh['a1']
-            dfh['z1a1'] = dfh['z1']/dfh['a1']
-            dfh['rcos'] = dfh.r/np.cos(dfh.a1 - dfh.a0)
-
-            dfh['x2'] = 1/dfh['z1']
-            dfh['cur'] = np.absolute(dfh.r) / (dfh.r**2 + (dfh.z/dfh.a1)**2)
-            # parameter space
-            dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
-            dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
+                dfh['x2'] = 1/dfh['z1']
+                dfh['cur'] = np.absolute(dfh.r) / (dfh.r**2 + (dfh.z/dfh.a1)**2)
+                # parameter space
+                dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
+                dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
+                
+                dfh['sina1'] = np.sin(dfh['a1'])
+                dfh['cosa1'] = np.cos(dfh['a1'])
+                
+                ss = StandardScaler()
             
-            dfh['sina1'] = np.sin(dfh['a1'])
-            dfh['cosa1'] = np.cos(dfh['a1'])
-            
-            ss = StandardScaler()
-          
-            dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
-            dfs = np.multiply(dfs, self.model_parameters[1])
-    
-            self.clusters = DBSCAN(eps=self.model_parameters[3][0] + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+                dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
+                dfs = np.multiply(dfs, self.model_parameters[1])
+        
+                self.clusters = DBSCAN(eps=self.model_parameters[3][0] + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
 
-            if ii == -STEPS:
-                dfh['s1'] = self.clusters
-                dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-            else:
-                dfh['s2'] = self.clusters
-                dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
-                maxs1 = dfh['s1'].max()
-                cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
-                s1 = dfh['s1'].values
-                s1[cond] = dfh['s2'].values[cond]+maxs1
-                dfh['s1'] = s1
-                dfh['s1'] = dfh['s1'].astype('int64')
-               # self.clusters = dfh['s1'].values
-                dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+                if ii == -STEPS:
+                    dfh['s1'] = self.clusters
+                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+                else:
+                    dfh['s2'] = self.clusters
+                    dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
+                    maxs1 = dfh['s1'].max()
+                    cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
+                    s1 = dfh['s1'].values
+                    s1[cond] = dfh['s2'].values[cond]+maxs1
+                    dfh['s1'] = s1
+                    dfh['s1'] = dfh['s1'].astype('int64')
+                # self.clusters = dfh['s1'].values
+                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
 
-        labels_loop1 = np.copy(dfh['s1'].values)
+            labels_loop1 = np.copy(dfh['s1'].values)
+            df = pd.DataFrame(labels_loop1)
+            df.to_csv(label_file1, index=False, header=['label'])
 
         dfh['a0'] = np.arctan2(dfh.x,-dfh.y)
         dfh['xd'] = -dfh.y/dfh['d']
         dfh['yd'] = dfh.x/dfh['d']
         
-        for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
-            print ('\r steps: %d '%ii, end='',flush=True)
+        if os.path.exists(label_file2):
+            print('Loading dbscan loop 2 file: ' + label_file2)
+            labels_loop2 = pd.read_csv(label_file2).label.values
+        else:
+            for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
+                print ('\r steps: %d '%ii, end='',flush=True)
 
-            dfh['a1'] = dfh['a0'] + (rr + self.model_parameters[2][1]*rr**2)*ii/180*np.pi
-    
-            dfh['za1'] = dfh.z/dfh['a1']
-            dfh['z1a1'] = dfh['z1']/dfh['a1']
-            dfh['rcos'] = dfh.r/np.cos(dfh.a1 - dfh.a0)
+                dfh['a1'] = dfh['a0'] + (rr + self.model_parameters[2][1]*rr**2)*ii/180*np.pi
+        
+                dfh['za1'] = dfh.z/dfh['a1']
+                dfh['z1a1'] = dfh['z1']/dfh['a1']
+                dfh['rcos'] = dfh.r/np.cos(dfh.a1 - dfh.a0)
 
-            dfh['cur'] = np.absolute(dfh.r) / (dfh.r**2 + (dfh.z/dfh.a1)**2)
-            # parameter space
-            dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
-            dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
-    
-            dfh['sina1'] = np.sin(dfh['a1'])
-            dfh['cosa1'] = np.cos(dfh['a1'])
-    
-            ss = StandardScaler()
-    
-            dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
-            dfs = np.multiply(dfs, self.model_parameters[1])
+                dfh['cur'] = np.absolute(dfh.r) / (dfh.r**2 + (dfh.z/dfh.a1)**2)
+                # parameter space
+                dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
+                dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
+        
+                dfh['sina1'] = np.sin(dfh['a1'])
+                dfh['cosa1'] = np.cos(dfh['a1'])
+        
+                ss = StandardScaler()
+        
+                dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
+                dfs = np.multiply(dfs, self.model_parameters[1])
 
-            self.clusters = DBSCAN(eps=self.model_parameters[3][1] + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+                self.clusters = DBSCAN(eps=self.model_parameters[3][1] + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
 
-            if ii == -STEPS:
-                dfh['s1'] = self.clusters
-                dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-            else:
-                dfh['s2'] = self.clusters
-                dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
-                maxs1 = dfh['s1'].max()
-                cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
-                s1 = dfh['s1'].values
-                s1[cond] = dfh['s2'].values[cond]+maxs1
-                dfh['s1'] = s1
-                dfh['s1'] = dfh['s1'].astype('int64')
-                dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+                if ii == -STEPS:
+                    dfh['s1'] = self.clusters
+                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+                else:
+                    dfh['s2'] = self.clusters
+                    dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
+                    maxs1 = dfh['s1'].max()
+                    cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
+                    s1 = dfh['s1'].values
+                    s1[cond] = dfh['s2'].values[cond]+maxs1
+                    dfh['s1'] = s1
+                    dfh['s1'] = dfh['s1'].astype('int64')
+                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
 
-        labels_loop2 = np.copy(dfh['s1'].values)
+            labels_loop2 = np.copy(dfh['s1'].values)
+            df = pd.DataFrame(labels_loop2)
+            df.to_csv(label_file2, index=False, header=['label'])
  
         dfh['a0'] = np.arctan2(-dfh.y,-dfh.x)
         dfh['xd'] = -dfh.x/dfh['d']
         dfh['yd'] = -dfh.y/dfh['d']
 
-        for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
-            print ('\r steps: %d '%ii, end='',flush=True)
+        if os.path.exists(label_file3):
+            print('Loading dbscan loop 3 file: ' + label_file3)
+            labels_loop3 = pd.read_csv(label_file3).label.values
+        else:
+            for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
+                print ('\r steps: %d '%ii, end='',flush=True)
 
-            dfh['a1'] = dfh['a0'] + (rr + self.model_parameters[2][1]*rr**2)*ii/180*np.pi
-    
-            dfh['za1'] = dfh.z/dfh['a1']
-            dfh['z1a1'] = dfh['z1']/dfh['a1']
-            dfh['rcos'] = dfh.r/np.cos(dfh.a1)
+                dfh['a1'] = dfh['a0'] + (rr + self.model_parameters[2][1]*rr**2)*ii/180*np.pi
+        
+                dfh['za1'] = dfh.z/dfh['a1']
+                dfh['z1a1'] = dfh['z1']/dfh['a1']
+                dfh['rcos'] = dfh.r/np.cos(dfh.a1)
 
 
-            dfh['cur'] = np.absolute(dfh.r) / (dfh.r**2 + (dfh.z/dfh.a1)**2)
-            # parameter space
-            dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
-            dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
-    
-            dfh['sina1'] = np.sin(dfh['a1'])
-            dfh['cosa1'] = np.cos(dfh['a1'])
-    
-            ss = StandardScaler()
-    
-            dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
-            dfs = np.multiply(dfs, self.model_parameters[1])
+                dfh['cur'] = np.absolute(dfh.r) / (dfh.r**2 + (dfh.z/dfh.a1)**2)
+                # parameter space
+                dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
+                dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
+        
+                dfh['sina1'] = np.sin(dfh['a1'])
+                dfh['cosa1'] = np.cos(dfh['a1'])
+        
+                ss = StandardScaler()
+        
+                dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
+                dfs = np.multiply(dfs, self.model_parameters[1])
 
-            self.clusters = DBSCAN(eps=self.model_parameters[3][2] + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+                self.clusters = DBSCAN(eps=self.model_parameters[3][2] + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
 
-            if ii == -STEPS:
-                dfh['s1'] = self.clusters
-                dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-            else:
-                dfh['s2'] = self.clusters
-                dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
-                maxs1 = dfh['s1'].max()
-                cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
-                s1 = dfh['s1'].values
-                s1[cond] = dfh['s2'].values[cond]+maxs1
-                dfh['s1'] = s1
-                dfh['s1'] = dfh['s1'].astype('int64')
-                dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+                if ii == -STEPS:
+                    dfh['s1'] = self.clusters
+                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+                else:
+                    dfh['s2'] = self.clusters
+                    dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
+                    maxs1 = dfh['s1'].max()
+                    cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
+                    s1 = dfh['s1'].values
+                    s1[cond] = dfh['s2'].values[cond]+maxs1
+                    dfh['s1'] = s1
+                    dfh['s1'] = dfh['s1'].astype('int64')
+                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
 
-        labels_loop3 = np.copy(dfh['s1'].values)
+            labels_loop3 = np.copy(dfh['s1'].values)
+            df = pd.DataFrame(labels_loop3)
+            df.to_csv(label_file3, index=False, header=['label'])
  
-        for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
-            print ('\r steps: %d '%ii, end='',flush=True)
+        if os.path.exists(label_file4):
+            print('Loading dbscan loop 4 file: ' + label_file4)
+            labels_loop4 = pd.read_csv(label_file4).label.values
+        else:
+            for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
+                print ('\r steps: %d '%ii, end='',flush=True)
 
-            # HACK: LIAM: Nicole suggests 4th loop with steprr=0.05
-            dfh['a1'] = dfh['a0'] + (rr + 0.05*rr**2)*ii/180*np.pi
-    
-            dfh['za1'] = dfh.z/dfh['a1']
-            dfh['z1a1'] = dfh['z1']/dfh['a1']
-            dfh['rcos'] = dfh.r/np.cos(dfh.a1)
+                # HACK: LIAM: Nicole suggests 4th loop with steprr=0.05
+                dfh['a1'] = dfh['a0'] + (rr + 0.05*rr**2)*ii/180*np.pi
+        
+                dfh['za1'] = dfh.z/dfh['a1']
+                dfh['z1a1'] = dfh['z1']/dfh['a1']
+                dfh['rcos'] = dfh.r/np.cos(dfh.a1)
 
 
-            dfh['cur'] = np.absolute(dfh.r) / (dfh.r**2 + (dfh.z/dfh.a1)**2)
-            # parameter space
-            dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
-            dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
-    
-            dfh['sina1'] = np.sin(dfh['a1'])
-            dfh['cosa1'] = np.cos(dfh['a1'])
-    
-            ss = StandardScaler()
-    
-            dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
-            dfs = np.multiply(dfs, self.model_parameters[1])
+                dfh['cur'] = np.absolute(dfh.r) / (dfh.r**2 + (dfh.z/dfh.a1)**2)
+                # parameter space
+                dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
+                dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
+        
+                dfh['sina1'] = np.sin(dfh['a1'])
+                dfh['cosa1'] = np.cos(dfh['a1'])
+        
+                ss = StandardScaler()
+        
+                dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
+                dfs = np.multiply(dfs, self.model_parameters[1])
 
-            # HACK: LIAM: Nicole suggests 4th loop with eps=0.045
-            self.clusters = DBSCAN(eps=0.045 + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+                # HACK: LIAM: Nicole suggests 4th loop with eps=0.045
+                self.clusters = DBSCAN(eps=0.0045 + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
 
-            if ii == -STEPS:
-                dfh['s1'] = self.clusters
-                dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-            else:
-                dfh['s2'] = self.clusters
-                dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
-                maxs1 = dfh['s1'].max()
-                cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
-                s1 = dfh['s1'].values
-                s1[cond] = dfh['s2'].values[cond]+maxs1
-                dfh['s1'] = s1
-                dfh['s1'] = dfh['s1'].astype('int64')
-                dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+                if ii == -STEPS:
+                    dfh['s1'] = self.clusters
+                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+                else:
+                    dfh['s2'] = self.clusters
+                    dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
+                    maxs1 = dfh['s1'].max()
+                    cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
+                    s1 = dfh['s1'].values
+                    s1[cond] = dfh['s2'].values[cond]+maxs1
+                    dfh['s1'] = s1
+                    dfh['s1'] = dfh['s1'].astype('int64')
+                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
 
-        labels_loop4 = np.copy(dfh['s1'].values)
+            labels_loop4 = np.copy(dfh['s1'].values)
+            df = pd.DataFrame(labels_loop4)
+            df.to_csv(label_file4, index=False, header=['label'])
 
         # dfh['a0'] = np.arctan2(-dfh.x,dfh.y)
         # dfh['xd'] = dfh.y/dfh['d']
@@ -340,8 +368,8 @@ class Clusterer(object):
 
         return (labels_loop1, labels_loop2, labels_loop3, labels_loop4)
 
-    def predict(self, hits): 
-        (l1, l2, l3, l4)  = self._dbscan(hits)
+    def predict(self, hits, label_file_root): 
+        (l1, l2, l3, l4)  = self._dbscan(hits, label_file_root)
         # dfh = self._dbscan(dfh, local_eps=DBSCAN_LOCAL_EPS_1, shift=True)
         # self.clusters = dfh['s1'].values
         
@@ -401,7 +429,7 @@ def run_cone_slicing_predictions(event_id, all_hits, label_identifier):
 
     return labels_cone
 
-def run_predictions(all_labels, all_hits, model, unmatched_only=True, merge_labels=True, filter_hits=True, track_extension=True):
+def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_root, unmatched_only=True, merge_labels=True, filter_hits=True, track_extension=True):
     """ Run a round of predictions on all or a subset of remaining hits.
     Parameters:
       all_labels: Input np array of labeled tracks, where the index in all_labels matches
@@ -437,7 +465,7 @@ def run_predictions(all_labels, all_hits, model, unmatched_only=True, merge_labe
         hits_to_predict = hits_to_predict.drop(hits_to_predict.index[drop_indices])
 
     # Run predictions on the input model
-    (l1, l2, l3, l4) = model.predict(hits_to_predict)
+    (l1, l2, l3, l4) = model.predict(hits_to_predict, label_file_root)
 
     # Make sure max track ID is not larger than length of labels list.
     l1 = sd.renumber_labels(l1)
@@ -476,6 +504,19 @@ def run_predictions(all_labels, all_hits, model, unmatched_only=True, merge_labe
         l3a = l3
         l4a = l4
 
+    one_submission = create_one_event_submission(event_id, all_hits, l1a)
+    score = score_event(truth, one_submission)
+    print("Unfiltered dbscan loop 1 score for event %d: %.8f" % (event_id, score))
+    one_submission = create_one_event_submission(event_id, all_hits, l2a)
+    score = score_event(truth, one_submission)
+    print("Unfiltered dbscan loop 2 score for event %d: %.8f" % (event_id, score))
+    one_submission = create_one_event_submission(event_id, all_hits, l3a)
+    score = score_event(truth, one_submission)
+    print("Unfiltered dbscan loop 3 score for event %d: %.8f" % (event_id, score))
+    one_submission = create_one_event_submission(event_id, all_hits, l4a)
+    score = score_event(truth, one_submission)
+    print("Unfiltered dbscan loop 4 score for event %d: %.8f" % (event_id, score))
+
     # If desired, extend tracks after any mergeing.
     #track_extend_labels = np.copy(labels_out)
     if track_extension:
@@ -491,6 +532,19 @@ def run_predictions(all_labels, all_hits, model, unmatched_only=True, merge_labe
     l3a = sd.renumber_labels(l3a)
     l4a = sd.renumber_labels(l4a)
 
+    one_submission = create_one_event_submission(event_id, all_hits, l1a)
+    score = score_event(truth, one_submission)
+    print("Unfiltered extended dbscan loop 1 score for event %d: %.8f" % (event_id, score))
+    one_submission = create_one_event_submission(event_id, all_hits, l2a)
+    score = score_event(truth, one_submission)
+    print("Unfiltered extended dbscan loop 2 score for event %d: %.8f" % (event_id, score))
+    one_submission = create_one_event_submission(event_id, all_hits, l3a)
+    score = score_event(truth, one_submission)
+    print("Unfiltered extended dbscan loop 3 score for event %d: %.8f" % (event_id, score))
+    one_submission = create_one_event_submission(event_id, all_hits, l4a)
+    score = score_event(truth, one_submission)
+    print("Unfiltered extended dbscan loop 4 score for event %d: %.8f" % (event_id, score))
+
     if filter_hits:
         # Filter out any tracks that do not originate from volumes 7, 8, or 9.
         # Then, re-number all tracks so they are densely packed.
@@ -505,21 +559,44 @@ def run_predictions(all_labels, all_hits, model, unmatched_only=True, merge_labe
         l4a = sd.filter_invalid_tracks(l4a, all_hits, my_volumes, seed_length)
         l4a = sd.renumber_labels(l4a)
 
+        one_submission = create_one_event_submission(event_id, all_hits, l1a)
+        score = score_event(truth, one_submission)
+        print("Filtered extended dbscan loop 1 score for event %d: %.8f" % (event_id, score))
+        one_submission = create_one_event_submission(event_id, all_hits, l2a)
+        score = score_event(truth, one_submission)
+        print("Filtered extended dbscan loop 2 score for event %d: %.8f" % (event_id, score))
+        one_submission = create_one_event_submission(event_id, all_hits, l3a)
+        score = score_event(truth, one_submission)
+        print("Filtered extended dbscan loop 3 score for event %d: %.8f" % (event_id, score))
+        one_submission = create_one_event_submission(event_id, all_hits, l4a)
+        score = score_event(truth, one_submission)
+        print("Filtered extended dbscan loop 4 score for event %d: %.8f" % (event_id, score))
+
     # Comment out outlier removal for now, seems to cause memory issues
     #l1a = merge.remove_outliers(l1a, all_hits, print_counts=False)
     #l2a = merge.remove_outliers(l2a, all_hits, print_counts=False)
     #l3a = merge.remove_outliers(l3a, all_hits, print_counts=False)
     #l4a = merge.remove_outliers(l4a, all_hits, print_counts=False)
     labels_merged = merge.heuristic_merge_tracks(l1a, l2a, print_summary=False)
+    one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
+    score = score_event(truth, one_submission)
+    print("Merged loop 1&2 score for event %d: %.8f" % (event_id, score))
     labels_merged = merge.heuristic_merge_tracks(labels_merged, l3a, print_summary=False)
+    one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
+    score = score_event(truth, one_submission)
+    print("Merged loop 1&2&3 score for event %d: %.8f" % (event_id, score))
     labels_merged = merge.heuristic_merge_tracks(labels_merged, l4a, print_summary=False)
+    one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
+    score = score_event(truth, one_submission)
+    print("Merged loop 1&2&3&4 score for event %d: %.8f" % (event_id, score))
 
     return (labels_merged)
 
 def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, model_parameters):
     # Shortcut - if we've previously generated and saved labels, just use them
     # rather than re-generating.
-    label_file = 'event_' + str(event_id)+'_labels_' + label_identifier + '.csv'
+    label_file_root = 'event_' + str(event_id)+'_labels_' + label_identifier
+    label_file = label_file_root + '.csv'
     if os.path.exists(label_file):
         print(str(event_id) + ': load ' + label_file)
         labels = pd.read_csv(label_file).label.values
@@ -535,7 +612,8 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
     model = Clusterer(model_parameters)
     
     # For the first run, we do not have an input array of labels/tracks.
-    (labels) = run_predictions(None, hits, model, unmatched_only=False, merge_labels=False, filter_hits=True, track_extension=True)
+    label_file_root1 = label_file_root + '_phase1'
+    (labels) = run_predictions(event_id, None, hits, truth, model, label_file_root1, unmatched_only=False, merge_labels=False, filter_hits=True, track_extension=True)
 
     if truth is not None:
         # Score for the event
@@ -543,8 +621,9 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
         score = score_event(truth, one_submission)
         print("Filtered 1st pass score for event %d: %.8f" % (event_id, score))
 
+    label_file_root1 = label_file_root + '_phase2'
     model = Clusterer(model_parameters)
-    (labels) = run_predictions(labels, hits, model, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
+    (labels) = run_predictions(event_id, labels, hits, truth, model, label_file_root2, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
 
     if truth is not None:
         # Score for the event
@@ -561,8 +640,9 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
     df = pd.DataFrame(labels)
     df.to_csv(label_file, index=False, header=['label'])
 
+    # label_file_root1 = label_file_root + '_phase3'
     # model = Clusterer(model_parameters)
-    # (labels, _) = run_predictions(labels, hits, model, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
+    # (labels) = run_predictions(event_id, labels, hits, truth, model, label_file_root3, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
 
     # # Save the generated labels, can avoid re-generation next run.
 
