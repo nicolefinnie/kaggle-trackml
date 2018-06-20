@@ -281,7 +281,7 @@ class Clusterer(object):
             dfs = np.multiply(dfs, self.model_parameters[1])
 
             # HACK: LIAM: Nicole suggests 4th loop with eps=0.045
-            self.clusters = DBSCAN(eps=0.033 + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+            self.clusters = DBSCAN(eps=0.045 + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
 
             if ii == -STEPS:
                 dfh['s1'] = self.clusters
