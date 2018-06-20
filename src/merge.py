@@ -716,6 +716,6 @@ def remove_outliers(labels, hits, smallest_track_size=2, aggressive=False, print
         print('Total removed due to bad dimensions: ' + str(count_rem_dimension))
         print('Total removed due to duplicate zs: ' + str(count_duplicatez))
         print('Total removed due to bad slopes: ' + str(count_rem_slope))
-        print('Total removed small tracks (<' + str(small_track_hits) + ') hits: ' + str(count_small_tracks))
+        print('Total removed small tracks (<' + str(smallest_track_size) + ') hits: ' + str(count_small_tracks))
 
     return labels

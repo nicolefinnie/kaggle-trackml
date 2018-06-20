@@ -165,6 +165,8 @@ class Clusterer(object):
                # self.clusters = dfh['s1'].values
                 dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
 
+        labels_loop1 = np.copy(dfh['s1'].values)
+
         dfh['a0'] = np.arctan2(dfh.x,-dfh.y)
         dfh['xd'] = -dfh.y/dfh['d']
         dfh['yd'] = dfh.x/dfh['d']
@@ -193,16 +195,21 @@ class Clusterer(object):
 
             self.clusters = DBSCAN(eps=self.model_parameters[3][1] + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
 
-            dfh['s2'] = self.clusters
-            dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
-            maxs1 = dfh['s1'].max()
-            cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
-            s1 = dfh['s1'].values
-            s1[cond] = dfh['s2'].values[cond]+maxs1
-            dfh['s1'] = s1
-            dfh['s1'] = dfh['s1'].astype('int64')
-            dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+            if ii == -STEPS:
+                dfh['s1'] = self.clusters
+                dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+            else:
+                dfh['s2'] = self.clusters
+                dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
+                maxs1 = dfh['s1'].max()
+                cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
+                s1 = dfh['s1'].values
+                s1[cond] = dfh['s2'].values[cond]+maxs1
+                dfh['s1'] = s1
+                dfh['s1'] = dfh['s1'].astype('int64')
+                dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
 
+        labels_loop2 = np.copy(dfh['s1'].values)
  
         dfh['a0'] = np.arctan2(-dfh.y,-dfh.x)
         dfh['xd'] = -dfh.x/dfh['d']
@@ -233,15 +240,64 @@ class Clusterer(object):
 
             self.clusters = DBSCAN(eps=self.model_parameters[3][2] + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
 
-            dfh['s2'] = self.clusters
-            dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
-            maxs1 = dfh['s1'].max()
-            cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
-            s1 = dfh['s1'].values
-            s1[cond] = dfh['s2'].values[cond]+maxs1
-            dfh['s1'] = s1
-            dfh['s1'] = dfh['s1'].astype('int64')
-            dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+            if ii == -STEPS:
+                dfh['s1'] = self.clusters
+                dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+            else:
+                dfh['s2'] = self.clusters
+                dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
+                maxs1 = dfh['s1'].max()
+                cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
+                s1 = dfh['s1'].values
+                s1[cond] = dfh['s2'].values[cond]+maxs1
+                dfh['s1'] = s1
+                dfh['s1'] = dfh['s1'].astype('int64')
+                dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+
+        labels_loop3 = np.copy(dfh['s1'].values)
+ 
+        for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
+            print ('\r steps: %d '%ii, end='',flush=True)
+
+            # HACK: LIAM: Nicole suggests 4th loop with steprr=0.05
+            dfh['a1'] = dfh['a0'] + (rr + 0.05*rr**2)*ii/180*np.pi
+    
+            dfh['za1'] = dfh.z/dfh['a1']
+            dfh['z1a1'] = dfh['z1']/dfh['a1']
+            dfh['rcos'] = dfh.r/np.cos(dfh.a1)
+
+
+            dfh['cur'] = np.absolute(dfh.r) / (dfh.r**2 + (dfh.z/dfh.a1)**2)
+            # parameter space
+            dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
+            dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
+    
+            dfh['sina1'] = np.sin(dfh['a1'])
+            dfh['cosa1'] = np.cos(dfh['a1'])
+    
+            ss = StandardScaler()
+    
+            dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
+            dfs = np.multiply(dfs, self.model_parameters[1])
+
+            # HACK: LIAM: Nicole suggests 4th loop with eps=0.045
+            self.clusters = DBSCAN(eps=0.033 + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+
+            if ii == -STEPS:
+                dfh['s1'] = self.clusters
+                dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+            else:
+                dfh['s2'] = self.clusters
+                dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
+                maxs1 = dfh['s1'].max()
+                cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
+                s1 = dfh['s1'].values
+                s1[cond] = dfh['s2'].values[cond]+maxs1
+                dfh['s1'] = s1
+                dfh['s1'] = dfh['s1'].astype('int64')
+                dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+
+        labels_loop4 = np.copy(dfh['s1'].values)
 
         # dfh['a0'] = np.arctan2(-dfh.x,dfh.y)
         # dfh['xd'] = dfh.y/dfh['d']
@@ -282,16 +338,16 @@ class Clusterer(object):
         #     dfh['s1'] = dfh['s1'].astype('int64')
         #     dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
 
-        return dfh['s1'].values
+        return (labels_loop1, labels_loop2, labels_loop3, labels_loop4)
 
     def predict(self, hits): 
-        self.clusters  = self._dbscan(hits)
+        (l1, l2, l3, l4)  = self._dbscan(hits)
         # dfh = self._dbscan(dfh, local_eps=DBSCAN_LOCAL_EPS_1, shift=True)
         # self.clusters = dfh['s1'].values
         
-        labels = np.unique(self.clusters)
-        self._eliminate_outliers(labels)
-        return self.clusters
+        #labels = np.unique(self.clusters)
+        #self._eliminate_outliers(labels)
+        return (l1, l2, l3, l4)
 
 def create_one_event_submission(event_id, hits, labels):
     sub_data = np.column_stack(([event_id]*len(hits), hits.hit_id.values, labels))
@@ -381,44 +437,84 @@ def run_predictions(all_labels, all_hits, model, unmatched_only=True, merge_labe
         hits_to_predict = hits_to_predict.drop(hits_to_predict.index[drop_indices])
 
     # Run predictions on the input model
-    new_labels = model.predict(hits_to_predict)
+    (l1, l2, l3, l4) = model.predict(hits_to_predict)
 
     # Make sure max track ID is not larger than length of labels list.
-    new_labels = sd.renumber_labels(new_labels)
+    l1 = sd.renumber_labels(l1)
+    l2 = sd.renumber_labels(l2)
+    l3 = sd.renumber_labels(l3)
+    l4 = sd.renumber_labels(l4)
 
     # If only predicting on unmatched hits, add any new predicted tracks directly
     # into the output labels. Otherwise, if mergeing is desired, merge the new
     # tracks into the existing/input tracks. Otherwise, just return the newly
     # predicted output labels.
     if unmatched_only:
-        labels_out = np.copy(all_labels)
-        new_labels[new_labels == 0] = 0 - len(all_labels) - 1
-        new_labels = new_labels + len(all_labels) + 1
-        labels_out[labels_out == 0] = new_labels
+        l1a = np.copy(all_labels)
+        l1[l1 == 0] = 0 - len(all_labels) - 1
+        l1 = l1 + len(all_labels) + 1
+        l1a[l1a == 0] = l1
+        l2a = np.copy(all_labels)
+        l2[l2 == 0] = 0 - len(all_labels) - 1
+        l2 = l2 + len(all_labels) + 1
+        l2a[l2a == 0] = l2
+        l3a = np.copy(all_labels)
+        l3[l3 == 0] = 0 - len(all_labels) - 1
+        l3 = l3 + len(all_labels) + 1
+        l3a[l3a == 0] = l3
+        l4a = np.copy(all_labels)
+        l4[l4 == 0] = 0 - len(all_labels) - 1
+        l4 = l4 + len(all_labels) + 1
+        l4a[l4a == 0] = l4
     elif merge_labels:
         # Merge/ensemble cone slicing and helix unrolling tracks
-        labels_out = sd.merge_tracks(all_labels, new_labels)
+        dead_code = True
+        #labels_out = sd.merge_tracks(all_labels, new_labels)
     else:
-        labels_out = new_labels
+        l1a = l1
+        l2a = l2
+        l3a = l3
+        l4a = l4
 
     # If desired, extend tracks after any mergeing.
+    #track_extend_labels = np.copy(labels_out)
     if track_extension:
         for i in range(EXTENSION_ATTEMPT):
             limit = EXTENSION_LIMIT_START + EXTENSION_LIMIT_INTERVAL*i
-            labels_out = extend_labels(labels_out, all_hits, do_swap=i%2==1, limit=(limit))
+            l1a = extend_labels(l1a, all_hits, do_swap=i%2==1, limit=(limit))
+            l2a = extend_labels(l2a, all_hits, do_swap=i%2==1, limit=(limit))
+            l3a = extend_labels(l3a, all_hits, do_swap=i%2==1, limit=(limit))
+            l4a = extend_labels(l4a, all_hits, do_swap=i%2==1, limit=(limit))
 
-    labels_out = sd.renumber_labels(labels_out)
-    unfiltered_labels = np.copy(labels_out)
+    l1a = sd.renumber_labels(l1a)
+    l2a = sd.renumber_labels(l2a)
+    l3a = sd.renumber_labels(l3a)
+    l4a = sd.renumber_labels(l4a)
 
     if filter_hits:
-        # Filter out any tracks that do not originate from volumes 7, 8, or 9
+        # Filter out any tracks that do not originate from volumes 7, 8, or 9.
+        # Then, re-number all tracks so they are densely packed.
         seed_length = 5
         my_volumes = [7, 8, 9]
-        labels_out = sd.filter_invalid_tracks(labels_out, all_hits, my_volumes, seed_length)
-        # Re-number all tracks so they are densely packed.
-        labels_out = sd.renumber_labels(labels_out)
+        l1a = sd.filter_invalid_tracks(l1a, all_hits, my_volumes, seed_length)
+        l1a = sd.renumber_labels(l1a)
+        l2a = sd.filter_invalid_tracks(l2a, all_hits, my_volumes, seed_length)
+        l2a = sd.renumber_labels(l2a)
+        l3a = sd.filter_invalid_tracks(l3a, all_hits, my_volumes, seed_length)
+        l3a = sd.renumber_labels(l3a)
+        l4a = sd.filter_invalid_tracks(l4a, all_hits, my_volumes, seed_length)
+        l4a = sd.renumber_labels(l4a)
 
-    return (labels_out, unfiltered_labels)
+    # Comment out outlier removal for now, seems to cause memory issues
+    #l1a = merge.remove_outliers(l1a, all_hits, print_counts=False)
+    #l2a = merge.remove_outliers(l2a, all_hits, print_counts=False)
+    #l3a = merge.remove_outliers(l3a, all_hits, print_counts=False)
+    #l4a = merge.remove_outliers(l4a, all_hits, print_counts=False)
+    labels_merged = merge.heuristic_merge_tracks(l1a, l2a, print_summary=False)
+    labels_merged = merge.heuristic_merge_tracks(labels_merged, l3a, print_summary=False)
+    labels_merged = merge.heuristic_merge_tracks(labels_merged, l4a, print_summary=False)
+
+    return (labels_merged)
 
 def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, model_parameters):
     # Shortcut - if we've previously generated and saved labels, just use them
@@ -439,22 +535,16 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
     model = Clusterer(model_parameters)
     
     # For the first run, we do not have an input array of labels/tracks.
-    (labels, unfiltered_labels) = run_predictions(None, hits, model, unmatched_only=False, merge_labels=False, filter_hits=True, track_extension=True)
-    #labels = merge.remove_outliers(labels, hits, print_counts=False)
+    (labels) = run_predictions(None, hits, model, unmatched_only=False, merge_labels=False, filter_hits=True, track_extension=True)
 
     if truth is not None:
-        one_submission = create_one_event_submission(event_id, hits, unfiltered_labels)
-        score = score_event(truth, one_submission)
-        print("Unfiltered 1st pass score for event %d: %.8f" % (event_id, score))
-        
         # Score for the event
         one_submission = create_one_event_submission(event_id, hits, labels)
         score = score_event(truth, one_submission)
         print("Filtered 1st pass score for event %d: %.8f" % (event_id, score))
 
     model = Clusterer(model_parameters)
-    (labels, _) = run_predictions(labels, hits, model, unmatched_only=True, merge_labels=True, filter_hits=True, track_extension=True)
-    #labels = merge.remove_outliers(labels, hits, print_counts=False)
+    (labels) = run_predictions(labels, hits, model, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
 
     if truth is not None:
         # Score for the event
