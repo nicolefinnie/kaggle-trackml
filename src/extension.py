@@ -1,14 +1,14 @@
 import numpy as np
 from sklearn.neighbors import KDTree
 
-def extend_labels(labels, hits, do_swap=False, limit=0.04):
+def extend_labels(iter, labels, hits, do_swap=False, limit=0.04):
     df = hits.copy(deep=True)
     df['track_id'] = labels.tolist()
-    return extend(df, do_swap, limit).track_id.values
+    return extend(iter, df, do_swap, limit).track_id.values
 
-def extend_submission(submissions, hits, do_swap=False, limit=0.04):
+def extend_submission(iter, submissions, hits, do_swap=False, limit=0.04):
     df = submissions.merge(hits,  on=['hit_id'], how='left')
-    df = extend(df, do_swap, limit)
+    df = extend(iter, df, do_swap, limit)
     return df[['event_id', 'hit_id', 'track_id']]       
     
 def _one_cone_slice(df, angle, delta_angle, limit=0.04, num_neighbours=18):
@@ -37,7 +37,8 @@ def _one_cone_slice(df, angle, delta_angle, limit=0.04, num_neighbours=18):
         if p==0: continue
 
         idx = np.where(df1.track_id==p)[0]
-        if len(idx)<min_length: continue
+        cur_track_len = len(idx)
+        if cur_track_len<min_length: continue
 
         if angle>0:
             idx = idx[np.argsort( z[idx])]
@@ -70,8 +71,18 @@ def _one_cone_slice(df, angle, delta_angle, limit=0.04, num_neighbours=18):
         direction = np.arctan2(r0 - r[ns], a0 - a[ns])
         diff = 1 - np.cos(direction - direction0)
         ns = ns[(r0 - r[ns] > 0.01) & (diff < (1 - np.cos(limit)))]
-        for n in ns: 
-            df.loc[df.hit_id == hit_ids[n], 'track_id'] = p
+        for n in ns:
+            df_ix = hit_ids[n] - 1
+            old_track = df.loc[df_ix, 'track_id']
+            if old_track == 0:
+                df.loc[df_ix, 'track_id'] = p
+            elif old_track != 0:
+                # If the hit is already occupied by another track, only take ownership
+                # of the hit if our track is longer than the current-occupying track.
+                existing_track_len = len(np.where(df.track_id==old_track)[0])
+                if cur_track_len > existing_track_len:
+                    df.loc[df_ix, 'track_id'] = p
+    
 
         ## extend end point
         ns = tree.query([[c1, s1, r1]], k=min(num_neighbours, min_num_neighbours), return_distance=False)
@@ -82,11 +93,20 @@ def _one_cone_slice(df, angle, delta_angle, limit=0.04, num_neighbours=18):
   
         ns = ns[(r[ns] - r1 > 0.01) & (diff < (1 - np.cos(limit)))]
         for n in ns:  
-            df.loc[df.hit_id == hit_ids[n], 'track_id'] = p
+            df_ix = hit_ids[n] - 1
+            old_track = df.loc[df_ix, 'track_id']
+            if old_track == 0:
+                df.loc[df_ix, 'track_id'] = p
+            elif old_track != 0:
+                # If the hit is already occupied by another track, only take ownership
+                # of the hit if our track is longer than the current-occupying track.
+                existing_track_len = len(np.where(df.track_id==old_track)[0])
+                if cur_track_len > existing_track_len:
+                    df.loc[df_ix, 'track_id'] = p
       
     return df
 
-def extend(df, do_swap=False, limit=0.04):
+def extend(iter, df, do_swap=False, limit=0.04):
     if do_swap:
         df = df.assign(x = -df.x)
         df = df.assign(y = -df.y)
@@ -98,7 +118,7 @@ def extend(df, do_swap=False, limit=0.04):
 
     for angle in range(-90,90,1):
 
-        print ('\r %f '%angle, end='',flush=True)
+        print ('\r%d %f '%(iter,angle), end='',flush=True)
         df1 = df.loc[(df.arctan2>(angle-1.0)/180*np.pi) & (df.arctan2<(angle+1.0)/180*np.pi)]
 
         num_hits = len(df1)
