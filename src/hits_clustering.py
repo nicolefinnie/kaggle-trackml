@@ -21,30 +21,24 @@ from extension import extend_submission, extend_labels
 import cone_slicing as cone
 import merge as merge
 
-SCALED_DISTANCE = [1,       1,       0.5, 0.125, 0.01, 0.01, 0.01, 0.001, 0.001]
-FEATURE_MATRIX = ['sina1', 'cosa1', 'z1', 'z2', 'z1a1', 'xd', 'yd', 'px', 'py']
+SCALED_DISTANCE = [1,       1,       0.5, 0.125, 0.01, 0.01, 0.001, 0.001]
+FEATURE_MATRIX = ['sina1', 'cosa1', 'z1', 'z2', 'xd', 'yd', 'px', 'py']
 
-SCALED_DISTANCE_2 = [1,       1,       0.5, 0.01,  0.01, 0.01, 0.001, 0.001]
-FEATURE_MATRIX_2 = ['sina1', 'cosa1', 'z3', 'z1a1', 'xd', 'yd', 'px', 'py']
+SCALED_DISTANCE_2 = [1,       1,       0.5, 0.125,  0.01, 0.01, 0.001, 0.001]
+FEATURE_MATRIX_2 = ['sina1', 'cosa1', 'z3', 'z2', 'xd', 'yd', 'px', 'py']
 
-SCALED_DISTANCE_3 = [1,       1,       0.5, 0.01,  0.01, 0.01, 0.001, 0.001]
-FEATURE_MATRIX_3 = ['sina1', 'cosa1', 'z1', 'z1a1',  'xd', 'yd', 'px', 'py']
-
-SCALED_DISTANCE_4 = [1,       1,       0.5, 0.125, 0.01, 0.01, 0.001, 0.001]
-FEATURE_MATRIX_4= ['sina1', 'cosa1', 'z4', 'z1', 'xd', 'yd', 'px', 'py']
-
-SCALED_DISTANCE_5 = [0.5,       0.5,       0.25, 0.5, 0.01, 0.01, 0.001, 0.001]
-FEATURE_MATRIX_5 = ['sina1', 'cosa1', 'z1', 'z2', 'xd', 'yd', 'px', 'py']
-
-SCALED_DISTANCE_6 = [0.5,       0.5,       0.25, 0.02,  0.01, 0.01, 0.001, 0.001]
-FEATURE_MATRIX_6 = ['sina1', 'cosa1', 'z3', 'z1a1', 'xd', 'yd', 'px', 'py']
+SCALED_DISTANCE_3 = [1,       1,       0.5, 0.125, 0.01, 0.01, 0.001, 0.001]
+FEATURE_MATRIX_3= ['sina1', 'cosa1', 'z4', 'z1', 'xd', 'yd', 'px', 'py']
 
 
 DBSCAN_LOCAL_EPS = 0.0033
 DBSCAN_LOCAL_EPS_1 = 0.0041
 DBSCAN_LOCAL_EPS_2 = 0.0037
+DBSCAN_LOCAL_EPS_3 = 0.0045
 
 STEPRR = 0.03
+STEPRR_1 = 0.05
+
 
 STEPEPS = 0.0000015
 STEPS = 120
@@ -68,21 +62,15 @@ print('scaled distance 2nd pass: ' + str(SCALED_DISTANCE_2))
 print('Feature matrix 3rd pass: ' + str(FEATURE_MATRIX_3))
 print('scaled distance 3rd pass: ' + str(SCALED_DISTANCE_3))
 
-print('Feature matrix 4th pass: ' + str(FEATURE_MATRIX_4))
-print('scaled distance 4th pass: ' + str(SCALED_DISTANCE_4))
-
-print('Feature matrix 5th pass: ' + str(FEATURE_MATRIX_5))
-print('scaled distance 5th pass: ' + str(SCALED_DISTANCE_5))
-
-print('Feature matrix 6th pass: ' + str(FEATURE_MATRIX_6))
-print('scaled distance 6th pass: ' + str(SCALED_DISTANCE_6))
-
-
 print('stepeps: ' + str(STEPEPS))
 
 print('steprr: ' + str(STEPRR))
+print('steprr 1: ' + str(STEPRR_1))
+
 print('local eps: ' + str(DBSCAN_LOCAL_EPS))
 print('local eps 1: ' + str(DBSCAN_LOCAL_EPS_1))
+print('local eps 2: ' + str(DBSCAN_LOCAL_EPS_2))
+print('local eps 3: ' + str(DBSCAN_LOCAL_EPS_3))
 
 print('steps: ' + str(STEPS))
 print('threshold min: ' + str(THRESHOLD_MIN))
@@ -123,8 +111,6 @@ class Clusterer(object):
         dfh['z3'] = np.log1p(np.absolute(dfh.z/dfh.r))*np.sign(dfh.z)
         dfh['z4'] = np.arccos(dfh.z/dfh.d)
         dfh['z5'] = (dfh.r - np.absolute(dfh.z))/dfh.r
-        #theta
-        dfh['rz'] = np.arctan2(dfh.r, dfh.z)
         rr = dfh['r']/1000      
 
         dfh['a0'] = np.arctan2(dfh.y,dfh.x)
@@ -137,13 +123,7 @@ class Clusterer(object):
         else:
             for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
                 print ('\r steps: %d '%ii, end='',flush=True)
-                dfh['a1'] = dfh['a0'] + (rr + self.model_parameters[2][0]*rr**2)*ii/180*np.pi
-                dfh['za1'] = dfh.z/dfh['a1']
-                dfh['z1a1'] = dfh['z1']/dfh['a1']
-                dfh['rcos'] = dfh.r/np.cos(dfh.a1 - dfh.a0)
-
-                dfh['x2'] = 1/dfh['z1']
-                dfh['cur'] = np.absolute(dfh.r) / (dfh.r**2 + (dfh.z/dfh.a1)**2)
+                dfh['a1'] = dfh['a0'] + (rr + self.model_parameters[2][0]*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
                 # parameter space
                 dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
                 dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
@@ -170,7 +150,6 @@ class Clusterer(object):
                     s1[cond] = dfh['s2'].values[cond]+maxs1
                     dfh['s1'] = s1
                     dfh['s1'] = dfh['s1'].astype('int64')
-                # self.clusters = dfh['s1'].values
                     dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
 
             labels_loop1 = np.copy(dfh['s1'].values)
@@ -188,13 +167,8 @@ class Clusterer(object):
             for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
                 print ('\r steps: %d '%ii, end='',flush=True)
 
-                dfh['a1'] = dfh['a0'] + (rr + self.model_parameters[2][1]*rr**2)*ii/180*np.pi
-        
-                dfh['za1'] = dfh.z/dfh['a1']
-                dfh['z1a1'] = dfh['z1']/dfh['a1']
-                dfh['rcos'] = dfh.r/np.cos(dfh.a1 - dfh.a0)
-
-                dfh['cur'] = np.absolute(dfh.r) / (dfh.r**2 + (dfh.z/dfh.a1)**2)
+                dfh['a1'] = dfh['a0'] + (rr + self.model_parameters[2][0]*rr**2)*ii/180*np.pi+ (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
+            
                 # parameter space
                 dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
                 dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
@@ -238,14 +212,7 @@ class Clusterer(object):
             for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
                 print ('\r steps: %d '%ii, end='',flush=True)
 
-                dfh['a1'] = dfh['a0'] + (rr + self.model_parameters[2][1]*rr**2)*ii/180*np.pi
-        
-                dfh['za1'] = dfh.z/dfh['a1']
-                dfh['z1a1'] = dfh['z1']/dfh['a1']
-                dfh['rcos'] = dfh.r/np.cos(dfh.a1)
-
-
-                dfh['cur'] = np.absolute(dfh.r) / (dfh.r**2 + (dfh.z/dfh.a1)**2)
+                dfh['a1'] = dfh['a0'] + (rr + self.model_parameters[2][0]*rr**2)*ii/180*np.pi+ (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi        
                 # parameter space
                 dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
                 dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
@@ -285,15 +252,8 @@ class Clusterer(object):
             for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
                 print ('\r steps: %d '%ii, end='',flush=True)
 
-                # HACK: LIAM: Nicole suggests 4th loop with steprr=0.05
-                dfh['a1'] = dfh['a0'] + (rr + 0.05*rr**2)*ii/180*np.pi
+                dfh['a1'] = dfh['a0'] + (rr + self.model_parameters[2][0]*rr**2)*ii/180*np.pi+ (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
         
-                dfh['za1'] = dfh.z/dfh['a1']
-                dfh['z1a1'] = dfh['z1']/dfh['a1']
-                dfh['rcos'] = dfh.r/np.cos(dfh.a1)
-
-
-                dfh['cur'] = np.absolute(dfh.r) / (dfh.r**2 + (dfh.z/dfh.a1)**2)
                 # parameter space
                 dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
                 dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
@@ -306,8 +266,7 @@ class Clusterer(object):
                 dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
                 dfs = np.multiply(dfs, self.model_parameters[1])
 
-                # HACK: LIAM: Nicole suggests 4th loop with eps=0.045
-                self.clusters = DBSCAN(eps=0.0045 + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+                self.clusters = DBSCAN(eps=self.model_parameters[3][3] + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
 
                 if ii == -STEPS:
                     dfh['s1'] = self.clusters
@@ -335,13 +294,6 @@ class Clusterer(object):
         #     print ('\r steps: %d '%ii, end='',flush=True)
 
         #     dfh['a1'] = dfh['a0'] + (rr + self.model_parameters[2][1]*rr**2)*ii/180*np.pi
-    
-        #     dfh['za1'] = dfh.z/dfh['a1']
-        #     dfh['z1a1'] = dfh['z1']/dfh['a1']
-        #     dfh['rcos'] = dfh.r/np.cos(dfh.a1)
-
-
-        #     dfh['cur'] = np.absolute(dfh.r) / (dfh.r**2 + (dfh.z/dfh.a1)**2)
         #     # parameter space
         #     dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
         #     dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
@@ -623,7 +575,7 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
 
     label_file_root2 = label_file_root + '_phase2'
     model = Clusterer(model_parameters)
-    (labels) = run_predictions(event_id, labels, hits, truth, model, label_file_root2, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
+    (labels) = run_predictions(event_id, labels, hits, truth, model, label_file_root2, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=False)
 
     if truth is not None:
         # Score for the event
@@ -666,44 +618,23 @@ def run_single_threaded_training(skip, nevents):
         model_parameters = []
         model_parameters.append(FEATURE_MATRIX)
         model_parameters.append(SCALED_DISTANCE)
-        model_parameters.append([STEPRR, STEPRR])           
-        model_parameters.append([DBSCAN_LOCAL_EPS, DBSCAN_LOCAL_EPS_1, DBSCAN_LOCAL_EPS_2])        
+        model_parameters.append([STEPRR, STEPRR_1])           
+        model_parameters.append([DBSCAN_LOCAL_EPS, DBSCAN_LOCAL_EPS_1, DBSCAN_LOCAL_EPS_2, DBSCAN_LOCAL_EPS_3])        
         labels_helix1 = run_helix_unrolling_predictions(event_id, hits, truth, 'train_helix1', model_parameters)
 
         model_parameters.clear()
         model_parameters.append(FEATURE_MATRIX_2)
         model_parameters.append(SCALED_DISTANCE_2)
-        model_parameters.append([STEPRR, STEPRR])        
-        model_parameters.append([DBSCAN_LOCAL_EPS, DBSCAN_LOCAL_EPS_1, DBSCAN_LOCAL_EPS_2])        
+        model_parameters.append([STEPRR, STEPRR_1])        
+        model_parameters.append([DBSCAN_LOCAL_EPS, DBSCAN_LOCAL_EPS_1, DBSCAN_LOCAL_EPS_2, DBSCAN_LOCAL_EPS_3])        
         labels_helix2 = run_helix_unrolling_predictions(event_id, hits, truth, 'train_helix2', model_parameters)
 
         model_parameters.clear()
         model_parameters.append(FEATURE_MATRIX_3)
         model_parameters.append(SCALED_DISTANCE_3)
-        model_parameters.append([STEPRR, STEPRR])        
-        model_parameters.append([DBSCAN_LOCAL_EPS, DBSCAN_LOCAL_EPS_1, DBSCAN_LOCAL_EPS_2])        
+        model_parameters.append([STEPRR, STEPRR_1])        
+        model_parameters.append([DBSCAN_LOCAL_EPS, DBSCAN_LOCAL_EPS_1, DBSCAN_LOCAL_EPS_2, DBSCAN_LOCAL_EPS_3])        
         labels_helix3 = run_helix_unrolling_predictions(event_id, hits, truth, 'train_helix3', model_parameters)
-
-        model_parameters.clear()
-        model_parameters.append(FEATURE_MATRIX_4)
-        model_parameters.append(SCALED_DISTANCE_4)
-        model_parameters.append([STEPRR, STEPRR])        
-        model_parameters.append([DBSCAN_LOCAL_EPS, DBSCAN_LOCAL_EPS_1, DBSCAN_LOCAL_EPS_2])        
-        labels_helix4 = run_helix_unrolling_predictions(event_id, hits, truth, 'train_helix4', model_parameters)
-
-        model_parameters.clear()
-        model_parameters.append(FEATURE_MATRIX_5)
-        model_parameters.append(SCALED_DISTANCE_5)
-        model_parameters.append([STEPRR, STEPRR])        
-        model_parameters.append([DBSCAN_LOCAL_EPS, DBSCAN_LOCAL_EPS_1, DBSCAN_LOCAL_EPS_2])        
-        labels_helix5 = run_helix_unrolling_predictions(event_id, hits, truth, 'train_helix5', model_parameters)
-
-        model_parameters.clear()
-        model_parameters.append(FEATURE_MATRIX_6)
-        model_parameters.append(SCALED_DISTANCE_6)
-        model_parameters.append([STEPRR, STEPRR])        
-        model_parameters.append([DBSCAN_LOCAL_EPS, DBSCAN_LOCAL_EPS_1, DBSCAN_LOCAL_EPS_2])        
-        labels_helix6 = run_helix_unrolling_predictions(event_id, hits, truth, 'train_helix6', model_parameters)
 
 
         # Do cone slicing, use heuristic merge to combine with helix unrolling
@@ -714,9 +645,7 @@ def run_single_threaded_training(skip, nevents):
         labels_helix1 = merge.remove_outliers(labels_helix1, hits, print_counts=False)
         labels_helix2 = merge.remove_outliers(labels_helix2, hits, print_counts=False)
         labels_helix3 = merge.remove_outliers(labels_helix3, hits, print_counts=False)
-        labels_helix4 = merge.remove_outliers(labels_helix4, hits, print_counts=False)
-        labels_helix5 = merge.remove_outliers(labels_helix5, hits, print_counts=False)
-        labels_helix6 = merge.remove_outliers(labels_helix6, hits, print_counts=False)
+    
         
         one_submission = create_one_event_submission(event_id, hits, labels_helix1)
         score = score_event(truth, one_submission)
@@ -732,22 +661,7 @@ def run_single_threaded_training(skip, nevents):
         score = score_event(truth, one_submission)
         print("After outlier removal helix3 %d: %.8f" % (event_id, score))
         
-
-        one_submission = create_one_event_submission(event_id, hits, labels_helix4)
-        score = score_event(truth, one_submission)
-        print("After outlier removal helix4 %d: %.8f" % (event_id, score))
         
-
-        one_submission = create_one_event_submission(event_id, hits, labels_helix5)
-        score = score_event(truth, one_submission)
-        print("After outlier removal helix5 %d: %.8f" % (event_id, score))
-        
-
-        one_submission = create_one_event_submission(event_id, hits, labels_helix6)
-        score = score_event(truth, one_submission)
-        print("After outlier removal helix6 %d: %.8f" % (event_id, score))
-        
-
         labels = merge.heuristic_merge_tracks(labels_helix1, labels_helix2, print_summary=False)
         one_submission = create_one_event_submission(event_id, hits, labels)
         score = score_event(truth, one_submission)
@@ -758,25 +672,6 @@ def run_single_threaded_training(skip, nevents):
         score = score_event(truth, one_submission)
         print("Merged helix1&2&3 unrolling for event %d: %.8f" % (event_id, score))
 
-        labels = merge.heuristic_merge_tracks(labels, labels_helix4, print_summary=False)
-        one_submission = create_one_event_submission(event_id, hits, labels)
-        score = score_event(truth, one_submission)
-        print("Merged helix1&2&3&4 unrolling for event %d: %.8f" % (event_id, score))
-
-        labels = merge.heuristic_merge_tracks(labels, labels_helix5, print_summary=False)
-        one_submission = create_one_event_submission(event_id, hits, labels)
-        score = score_event(truth, one_submission)
-        print("Merged helix1&2&3&4&5 unrolling for event %d: %.8f" % (event_id, score))
-
-        labels = merge.heuristic_merge_tracks(labels, labels_helix6, print_summary=False)
-        one_submission = create_one_event_submission(event_id, hits, labels)
-        score = score_event(truth, one_submission)
-        print("Merged helix1&2&3&4&5&6 unrolling for event %d: %.8f" % (event_id, score))
-
-        # labels = merge.heuristic_merge_tracks(labels, labels_cone, print_summary=False)
-        # one_submission = create_one_event_submission(event_id, hits, labels)
-        # score = score_event(truth, one_submission)
-        # print("Merged All unrolling and cone slicing for event %d: %.8f" % (event_id, score))
 
         # Un-comment this if you want to see the quality of the seeds generated.
         #seed_length = 5
@@ -829,45 +724,22 @@ if __name__ == '__main__':
             model_parameters.append(FEATURE_MATRIX)
             model_parameters.append(SCALED_DISTANCE)
             model_parameters.append([STEPRR, STEPRR])           
-            model_parameters.append([DBSCAN_LOCAL_EPS, DBSCAN_LOCAL_EPS_1, DBSCAN_LOCAL_EPS_2])        
+            model_parameters.append([DBSCAN_LOCAL_EPS, DBSCAN_LOCAL_EPS_1, DBSCAN_LOCAL_EPS_2, DBSCAN_LOCAL_EPS_3])        
             labels_helix1 = run_helix_unrolling_predictions(event_id, hits, None, 'test_helix1', model_parameters)
 
             model_parameters.clear()
             model_parameters.append(FEATURE_MATRIX_2)
             model_parameters.append(SCALED_DISTANCE_2)
             model_parameters.append([STEPRR, STEPRR])           
-            model_parameters.append([DBSCAN_LOCAL_EPS, DBSCAN_LOCAL_EPS_1, DBSCAN_LOCAL_EPS_2])        
+            model_parameters.append([DBSCAN_LOCAL_EPS, DBSCAN_LOCAL_EPS_1, DBSCAN_LOCAL_EPS_2, DBSCAN_LOCAL_EPS_3])        
             labels_helix2 = run_helix_unrolling_predictions(event_id, hits, None, 'test_helix2', model_parameters)
 
             model_parameters.clear()
             model_parameters.append(FEATURE_MATRIX_3)
             model_parameters.append(SCALED_DISTANCE_3)
             model_parameters.append([STEPRR, STEPRR])           
-            model_parameters.append([DBSCAN_LOCAL_EPS, DBSCAN_LOCAL_EPS_1, DBSCAN_LOCAL_EPS_2])        
+            model_parameters.append([DBSCAN_LOCAL_EPS, DBSCAN_LOCAL_EPS_1, DBSCAN_LOCAL_EPS_2, DBSCAN_LOCAL_EPS_3] )        
             labels_helix3 = run_helix_unrolling_predictions(event_id, hits, None, 'test_helix3', model_parameters)
-
-            model_parameters.clear()
-            model_parameters.append(FEATURE_MATRIX_4)
-            model_parameters.append(SCALED_DISTANCE_4)
-            model_parameters.append([STEPRR, STEPRR])           
-            model_parameters.append([DBSCAN_LOCAL_EPS, DBSCAN_LOCAL_EPS_1, DBSCAN_LOCAL_EPS_2])        
-            labels_helix4 = run_helix_unrolling_predictions(event_id, hits, None, 'test_helix4', model_parameters)
-
-            model_parameters.clear()
-            model_parameters.append(FEATURE_MATRIX_5)
-            model_parameters.append(SCALED_DISTANCE_5)
-            model_parameters.append([STEPRR, STEPRR])           
-            model_parameters.append([DBSCAN_LOCAL_EPS, DBSCAN_LOCAL_EPS_1, DBSCAN_LOCAL_EPS_2])        
-            labels_helix5 = run_helix_unrolling_predictions(event_id, hits, None, 'test_helix5', model_parameters)
-
-            model_parameters.clear()
-            model_parameters.append(FEATURE_MATRIX_6)
-            model_parameters.append(SCALED_DISTANCE_6)
-            model_parameters.append([STEPRR, STEPRR])           
-            model_parameters.append([DBSCAN_LOCAL_EPS, DBSCAN_LOCAL_EPS_1, DBSCAN_LOCAL_EPS_2])        
-            labels_helix6 = run_helix_unrolling_predictions(event_id, hits, None, 'test_helix6', model_parameters)
-
-            
 
 
             # Do cone slicing, use heuristic merge to combine with helix unrolling
@@ -878,16 +750,10 @@ if __name__ == '__main__':
             labels_helix1 = merge.remove_outliers(labels_helix1, hits, print_counts=False)
             labels_helix2 = merge.remove_outliers(labels_helix2, hits, print_counts=False)
             labels_helix3 = merge.remove_outliers(labels_helix3, hits, print_counts=False)
-            labels_helix4 = merge.remove_outliers(labels_helix4, hits, print_counts=False)
-            labels_helix5 = merge.remove_outliers(labels_helix5, hits, print_counts=False)
-            labels_helix6 = merge.remove_outliers(labels_helix6, hits, print_counts=False)
 
             labels = merge.heuristic_merge_tracks(labels_helix1, labels_helix2, print_summary=False)
             labels = merge.heuristic_merge_tracks(labels, labels_helix3, print_summary=False)
-            labels = merge.heuristic_merge_tracks(labels, labels_helix4, print_summary=False)
-            labels = merge.heuristic_merge_tracks(labels, labels_helix5, print_summary=False)
-            labels = merge.heuristic_merge_tracks(labels, labels_helix6, print_summary=False)
-            #labels = merge.heuristic_merge_tracks(labels, labels_cone, print_summary=False)
+        
 
             # Create our submission for this test event.
             one_submission = create_one_event_submission(event_id, hits, labels)
