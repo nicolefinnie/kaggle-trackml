@@ -678,6 +678,17 @@ def remove_track_outliers(track, labels, hits, aggressive):
             
     return (labels, found_bad_volume, found_bad_dimension, found_bad_z, found_bad_slope)
 
+def remove_small_tracks(labels, smallest_track_size=2):
+    # Remove small tracks that provide little value, and mostly just cause noise.
+    count_small_tracks = 0
+    tracks, counts = np.unique(labels, return_counts=True)
+    for track, count in zip(tracks, counts):
+        if track != 0 and count < smallest_track_size:
+            count_small_tracks = count_small_tracks + 1
+            labels[labels == track] = 0
+    return (labels, count_small_tracks)
+
+
 def remove_outliers(labels, hits, smallest_track_size=2, aggressive=False, print_counts=True):
     tracks = np.unique(labels)
     hits['z_abs'] = hits.z.abs()
@@ -699,17 +710,10 @@ def remove_outliers(labels, hits, smallest_track_size=2, aggressive=False, print
             count_duplicatez = count_duplicatez + c3
             count_rem_slope = count_rem_slope + c4
 
-    # Remove singletons, we do not get any score for those. This is done
+    # Remove small tracks, we do not get any score for those. This is done
     # last, in case removing the outliers (above) removed enough hits
-    # from a track to create a new singleton.
-    tracks = np.unique(labels)
-    for track in tracks:
-        if track == 0:
-            continue
-        track_hits = np.where(labels == track)[0]
-        if len(track_hits) < smallest_track_size:
-            count_small_tracks = count_small_tracks + 1
-            labels[track_hits[0]] = 0
+    # from a track to make them smaller than the threshold.
+    (labels, count_small_tracks) = remove_small_tracks(labels, smallest_track_size=smallest_track_size)
 
     if print_counts:
         print('Total removed due to bad volumes: ' + str(count_rem_volume))
