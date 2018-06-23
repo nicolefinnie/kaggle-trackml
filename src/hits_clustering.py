@@ -337,7 +337,7 @@ class Clusterer(object):
         dfh['xd'] = -dfh.y/dfh['d']
         dfh['yd'] = dfh.x/dfh['d']
         
-        if os.path.exists(label_file2):
+        if os.path.exists(label_file6):
             print('Loading dbscan loop 6 file: ' + label_file6)
             labels_loop6 = pd.read_csv(label_file6).label.values
         else:
@@ -851,14 +851,12 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
 def print_info(helix_id, model_parameters):
     feature_matrix = model_parameters[0]
     scaled_distance = model_parameters[1]
-    dbscan_matrix = model_parameters[2]
-    z_shift_matrix = model_parameters[3]
+    z_shift_matrix = model_parameters[2]
 
     print('==========================================================================')
     print('Helix model: ' + str(helix_id))
     print('Feature matrix: ' + str(feature_matrix))
     print('Scaled distance: ' + str(scaled_distance))
-    print('Eps matrix: ' + str(dbscan_matrix))
     print('z shift matrix: ' + str(z_shift_matrix))
     print('==========================================================================')
    
