@@ -268,7 +268,7 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
     
     # For the first run, we do not have an input array of labels/tracks.
     label_file_root1 = label_file_root + '_phase1'
-    (labels) = run_predictions(event_id, None, hits, truth, model, label_file_root1, unmatched_only=False, filter_hits=True, EXTENSION_STANDARD_LIMITS)
+    (labels) = run_predictions(event_id, None, hits, truth, model, label_file_root1, unmatched_only=False, filter_hits=True, track_extension_limits=EXTENSION_STANDARD_LIMITS)
 
     if truth is not None:
         # Score for the event
@@ -278,7 +278,7 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
 
     label_file_root2 = label_file_root + '_phase2'
     model = Clusterer(model_parameters)
-    (labels) = run_predictions(event_id, labels, hits, truth, model, label_file_root2, unmatched_only=True, filter_hits=False, EXTENSION_LIGHT_LIMITS)
+    (labels) = run_predictions(event_id, labels, hits, truth, model, label_file_root2, unmatched_only=True, filter_hits=False, track_extension_limits=EXTENSION_LIGHT_LIMITS)
 
     if truth is not None:
         # Score for the event
