@@ -698,64 +698,25 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
         l8a = sd.renumber_labels(l8a)
 
     if filter_hits:
-        # Filter out any tracks that do not originate from volumes 7, 8, or 9.
-        # Then, re-number all tracks so they are densely packed.
-        seed_length = 5
-        my_volumes = [7, 8, 9]
-        l1a = sd.filter_invalid_tracks(l1a, all_hits, my_volumes, seed_length)
+        # Filter out tracks that are too small, as well as hits that look
+        # like outliers, i.e. duplicate-z values, slopes that do not match
+        # other hits in the track, etc.
+        l1a = merge.remove_outliers(l1a, all_hits, smallest_track_size=5, print_counts=False)
+        l2a = merge.remove_outliers(l2a, all_hits, smallest_track_size=5, print_counts=False)
+        l3a = merge.remove_outliers(l3a, all_hits, smallest_track_size=5, print_counts=False)
+        l4a = merge.remove_outliers(l4a, all_hits, smallest_track_size=5, print_counts=False)
+        l5a = merge.remove_outliers(l5a, all_hits, smallest_track_size=5, print_counts=False)
+        l6a = merge.remove_outliers(l6a, all_hits, smallest_track_size=5, print_counts=False)
+        l7a = merge.remove_outliers(l7a, all_hits, smallest_track_size=5, print_counts=False)
+        l8a = merge.remove_outliers(l8a, all_hits, smallest_track_size=5, print_counts=False)
         l1a = sd.renumber_labels(l1a)
-        l2a = sd.filter_invalid_tracks(l2a, all_hits, my_volumes, seed_length)
         l2a = sd.renumber_labels(l2a)
-        l3a = sd.filter_invalid_tracks(l3a, all_hits, my_volumes, seed_length)
         l3a = sd.renumber_labels(l3a)
-        l4a = sd.filter_invalid_tracks(l4a, all_hits, my_volumes, seed_length)
         l4a = sd.renumber_labels(l4a)
-        l5a = sd.filter_invalid_tracks(l5a, all_hits, my_volumes, seed_length)
         l5a = sd.renumber_labels(l5a)
-        l6a = sd.filter_invalid_tracks(l6a, all_hits, my_volumes, seed_length)
         l6a = sd.renumber_labels(l6a)
-        l7a = sd.filter_invalid_tracks(l7a, all_hits, my_volumes, seed_length)
         l7a = sd.renumber_labels(l7a)
-        l8a = sd.filter_invalid_tracks(l8a, all_hits, my_volumes, seed_length)
         l8a = sd.renumber_labels(l8a)
-        
-
-
-        one_submission = create_one_event_submission(event_id, all_hits, l1a)
-        score = score_event(truth, one_submission)
-        print("Filtered dbscan loop 1 score for event %d: %.8f" % (event_id, score))
-        one_submission = create_one_event_submission(event_id, all_hits, l2a)
-        score = score_event(truth, one_submission)
-        print("Filtered dbscan loop 2 score for event %d: %.8f" % (event_id, score))
-        one_submission = create_one_event_submission(event_id, all_hits, l3a)
-        score = score_event(truth, one_submission)
-        print("Filtered dbscan loop 3 score for event %d: %.8f" % (event_id, score))
-        one_submission = create_one_event_submission(event_id, all_hits, l4a)
-        score = score_event(truth, one_submission)
-        print("Filtered dbscan loop 4 score for event %d: %.8f" % (event_id, score))
-        one_submission = create_one_event_submission(event_id, all_hits, l5a)
-        score = score_event(truth, one_submission)
-        print("Filtered dbscan loop 5 score for event %d: %.8f" % (event_id, score))
-        one_submission = create_one_event_submission(event_id, all_hits, l6a)
-        score = score_event(truth, one_submission)
-        print("Filtered dbscan loop 6 score for event %d: %.8f" % (event_id, score))
-        one_submission = create_one_event_submission(event_id, all_hits, l7a)
-        score = score_event(truth, one_submission)
-        print("Filtered dbscan loop 7 score for event %d: %.8f" % (event_id, score))
-        one_submission = create_one_event_submission(event_id, all_hits, l8a)
-        score = score_event(truth, one_submission)
-        print("Filtered dbscan loop 8 score for event %d: %.8f" % (event_id, score))
-
-        # Perform sophisticated outlier removal, duplicate-z removal, slope-based removal
-        l1a = merge.remove_outliers(l1a, all_hits, print_counts=False)
-        l2a = merge.remove_outliers(l2a, all_hits, print_counts=False)
-        l3a = merge.remove_outliers(l3a, all_hits, print_counts=False)
-        l4a = merge.remove_outliers(l4a, all_hits, print_counts=False)
-        l5a = merge.remove_outliers(l5a, all_hits, print_counts=False)
-        l6a = merge.remove_outliers(l6a, all_hits, print_counts=False)
-        l7a = merge.remove_outliers(l7a, all_hits, print_counts=False)
-        l8a = merge.remove_outliers(l8a, all_hits, print_counts=False)
-        
 
         one_submission = create_one_event_submission(event_id, all_hits, l1a)
         score = score_event(truth, one_submission)
