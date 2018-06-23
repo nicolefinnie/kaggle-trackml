@@ -34,12 +34,8 @@ STEPRR = 0.03
 
 STEPEPS = 0.0000015
 STEPS = 120
-EXTENSION_ATTEMPT = 8
-# 0.06-0.07 is the most ideal value in most cases, so we want it to be the final processing parameter
-
-EXTENSION_LIMIT_START = 0.03
-EXTENSION_LIMIT_INTERVAL = 0.005
-
+EXTENSION_STANDARD_LIMITS = [0.25, 0.35, 0.85, 0.95]
+EXTENSION_LIGHT_LIMITS = [0.3, 0.7]
 
 DBSCAN_EPS = 0.0033
 
@@ -49,10 +45,10 @@ print('steps: ' + str(STEPS))
 print('steprr: ' + str(STEPRR))
 
 print('stepeps: ' + str(STEPEPS))
-print('extension attempt: ' + str(EXTENSION_ATTEMPT))
-print('extension range from  ' + str(EXTENSION_LIMIT_START) + ' to ' + str(EXTENSION_LIMIT_START + EXTENSION_LIMIT_INTERVAL*(EXTENSION_ATTEMPT-1)))
+print('extension standard limits: ' + str(EXTENSION_STANDARD_LIMITS))
+print('extension light limits: ' + str(EXTENSION_LIGHT_LIMITS))
 
-print ('########################################################################')
+print ('#######################################################################')
 
 class Clusterer(object):
     def __init__(self, model_parameters):                        
@@ -82,39 +78,22 @@ class Clusterer(object):
                 print('Loading dbscan loop ' + str(loop+1) + ' file: ' + label_file)
                 labels.append(pd.read_csv(label_file).label.values)
             else:
-                if loop == 0:
+                if loop%4 == 0:
                     dfh['a0'] = np.arctan2(dfh.y,dfh.x)
                     dfh['xd'] = dfh.x/dfh['d']
                     dfh['yd'] = dfh.y/dfh['d']
-                elif loop == 1:
+                elif loop%4 == 1:
                     dfh['a0'] = np.arctan2(dfh.x,-dfh.y)
                     dfh['xd'] = -dfh.y/dfh['d']
                     dfh['yd'] = dfh.x/dfh['d']
-                elif loop == 2:
+                elif loop%4 == 2:
                     dfh['a0'] = np.arctan2(-dfh.y,-dfh.x)
                     dfh['xd'] = -dfh.x/dfh['d']
                     dfh['yd'] = -dfh.y/dfh['d']
-                elif loop == 3:
+                else:
                     dfh['a0'] = np.arctan2(-dfh.x,dfh.y)
                     dfh['xd'] = dfh.y/dfh['d']
                     dfh['yd'] = -dfh.x/dfh['d']
-                elif loop == 4:
-                    dfh['a0'] = np.arctan2(dfh.y,dfh.x)
-                    dfh['xd'] = dfh.x/dfh['d']
-                    dfh['yd'] = dfh.y/dfh['d']
-                elif loop == 5:
-                    dfh['a0'] = np.arctan2(dfh.x,-dfh.y)
-                    dfh['xd'] = -dfh.y/dfh['d']
-                    dfh['yd'] = dfh.x/dfh['d']
-                elif loop == 6:
-                    dfh['a0'] = np.arctan2(-dfh.y,-dfh.x)
-                    dfh['xd'] = -dfh.x/dfh['d']
-                    dfh['yd'] = -dfh.y/dfh['d']
-                elif loop == 7:
-                    dfh['a0'] = np.arctan2(-dfh.x,dfh.y)
-                    dfh['xd'] = dfh.y/dfh['d']
-                    dfh['yd'] = -dfh.x/dfh['d']
-                # else - add any x/y plan transforms here.
 
                 # Main DBSCAN loop. Longest-track-wins merging at each step.
                 for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
@@ -171,7 +150,7 @@ def create_one_event_submission(event_id, hits, labels):
     submission = pd.DataFrame(data=sub_data, columns=["event_id", "hit_id", "track_id"]).astype(int)
     return submission
 
-def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_root, unmatched_only=True, filter_hits=True, track_extension=True):
+def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_root, unmatched_only=True, filter_hits=True, track_extension_limits=None):
     """ Run a round of predictions on all or a subset of remaining hits.
     Parameters:
       all_labels: Input np array of labeled tracks, where the index in all_labels matches
@@ -190,9 +169,8 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
         high quality, i.e. that have a specific minimum track length, and that
         contain hits in volumes 7, 8, or 9. False for this parameter means that no
         filtering will be performed.
-      track_extension: True iff found tracks should be extended (both ways) to lengthen
-        any found tracks. Track extension is performed from the full list of tracks, i.e.
-        after mergeing (if mergeing was performed).
+      track_extension_limits: The angular limits to use when applying track extensions.
+        Track extension is performed from the full list of tracks.
 
     Returns: The new np array of predicted labels/tracks, as well as the unfiltered version.
     """
@@ -209,7 +187,7 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
     labels_full = []
 
     # Make sure max track ID is not larger than length of labels list.
-    for i in range(len(labels)):
+    for i in range(len(labels_subset)):
         labels_subset[i] = merge.renumber_labels(labels_subset[i])
 
         # If only predicting on unmatched hits, add any new predicted tracks directly
@@ -228,10 +206,13 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
             print("Unfiltered dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
 
         # If desired, extend tracks
-        if track_extension:
-            for ii in range(EXTENSION_ATTEMPT):
-                limit = EXTENSION_LIMIT_START + EXTENSION_LIMIT_INTERVAL*i
-                labels_full[i] = extend_labels(ii, labels_full[i], all_hits, do_swap=ii%2==1, limit=(limit))
+        if track_extension_limits is not None:
+            for ix, limit in enumerate(track_extension_limits):
+                labels_full[i] = extend_labels(ix, labels_full[i], all_hits, do_swap=False, limit=(limit))
+                if False and truth is not None:
+                    one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
+                    score = score_event(truth, one_submission)
+                    print("Extension %d loop %d score for event %d: %.8f" % (ix,i+1,event_id, score))
                 
             labels_full[i] = merge.renumber_labels(labels_full[i])
             
@@ -287,7 +268,7 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
     
     # For the first run, we do not have an input array of labels/tracks.
     label_file_root1 = label_file_root + '_phase1'
-    (labels) = run_predictions(event_id, None, hits, truth, model, label_file_root1, unmatched_only=False, filter_hits=True, track_extension=True)
+    (labels) = run_predictions(event_id, None, hits, truth, model, label_file_root1, unmatched_only=False, filter_hits=True, EXTENSION_STANDARD_LIMITS)
 
     if truth is not None:
         # Score for the event
@@ -297,7 +278,7 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
 
     label_file_root2 = label_file_root + '_phase2'
     model = Clusterer(model_parameters)
-    (labels) = run_predictions(event_id, labels, hits, truth, model, label_file_root2, unmatched_only=True, filter_hits=False, track_extension=True)
+    (labels) = run_predictions(event_id, labels, hits, truth, model, label_file_root2, unmatched_only=True, filter_hits=False, EXTENSION_LIGHT_LIMITS)
 
     if truth is not None:
         # Score for the event
