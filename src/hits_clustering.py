@@ -67,7 +67,7 @@ class Clusterer(object):
         label_file6 = label_file_root + '_dbscan6.csv'
         label_file7 = label_file_root + '_dbscan7.csv'
         label_file8 = label_file_root + '_dbscan8.csv'
-        
+        labels = []
 
         dfh['d'] = np.sqrt(dfh.x**2+dfh.y**2+dfh.z**2)
         dfh['r'] = np.sqrt(dfh.x**2+dfh.y**2)
@@ -76,438 +76,100 @@ class Clusterer(object):
         dfh['rz'] = np.arctan2(dfh.r, dfh.z)
         rr = dfh['r']/1000      
 
- ### LOOP 1 ##########################################################################################
+        for loop in range(len(self.model_parameters[2])):
+            label_file = label_file_root + '_dbscan' + str(loop+1) + '.csv'
+            if os.path.exists(label_file):
+                print('Loading dbscan loop ' + str(loop+1) + ' file: ' + label_file)
+                labels.append(pd.read_csv(label_file).label.values)
+            else:
+                if loop == 0:
+                    dfh['a0'] = np.arctan2(dfh.y,dfh.x)
+                    dfh['xd'] = dfh.x/dfh['d']
+                    dfh['yd'] = dfh.y/dfh['d']
+                elif loop == 1:
+                    dfh['a0'] = np.arctan2(dfh.x,-dfh.y)
+                    dfh['xd'] = -dfh.y/dfh['d']
+                    dfh['yd'] = dfh.x/dfh['d']
+                elif loop == 2:
+                    dfh['a0'] = np.arctan2(-dfh.y,-dfh.x)
+                    dfh['xd'] = -dfh.x/dfh['d']
+                    dfh['yd'] = -dfh.y/dfh['d']
+                elif loop == 3:
+                    dfh['a0'] = np.arctan2(-dfh.x,dfh.y)
+                    dfh['xd'] = dfh.y/dfh['d']
+                    dfh['yd'] = -dfh.x/dfh['d']
+                elif loop == 4:
+                    dfh['a0'] = np.arctan2(dfh.y,dfh.x)
+                    dfh['xd'] = dfh.x/dfh['d']
+                    dfh['yd'] = dfh.y/dfh['d']
+                elif loop == 5:
+                    dfh['a0'] = np.arctan2(dfh.x,-dfh.y)
+                    dfh['xd'] = -dfh.y/dfh['d']
+                    dfh['yd'] = dfh.x/dfh['d']
+                elif loop == 6:
+                    dfh['a0'] = np.arctan2(-dfh.y,-dfh.x)
+                    dfh['xd'] = -dfh.x/dfh['d']
+                    dfh['yd'] = -dfh.y/dfh['d']
+                elif loop == 7:
+                    dfh['a0'] = np.arctan2(-dfh.x,dfh.y)
+                    dfh['xd'] = dfh.y/dfh['d']
+                    dfh['yd'] = -dfh.x/dfh['d']
+                # else - add any x/y plan transforms here.
 
-        dfh['a0'] = np.arctan2(dfh.y,dfh.x)
-        dfh['xd'] = dfh.x/dfh['d']
-        dfh['yd'] = dfh.y/dfh['d']
+                # Main DBSCAN loop. Longest-track-wins merging at each step.
+                for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
+                    print ('\r steps: %d '%ii, end='',flush=True)
+                    dfh['zshift'] = dfh.z + self.model_parameters[2][loop]
+                    dfh['z1'] = dfh.zshift/dfh['r'] 
+                    dfh['z2'] = dfh.zshift/dfh['d']
+                    dfh['z3'] = np.log1p(np.absolute(dfh.zshift/dfh.r))*np.sign(dfh.zshift)
 
-        if os.path.exists(label_file1):
-            print('Loading dbscan loop 1 file: ' + label_file1)
-            labels_loop1 = pd.read_csv(label_file1).label.values
-        else:
-            for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
-                print ('\r steps: %d '%ii, end='',flush=True)
-                dfh['zshift'] = dfh.z + self.model_parameters[2][0]
-                dfh['z1'] = dfh.zshift/dfh['r'] 
-                dfh['z2'] = dfh.zshift/dfh['d']
-                dfh['z3'] = np.log1p(np.absolute(dfh.zshift/dfh.r))*np.sign(dfh.zshift)
+                    dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
 
-                dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
-
-                # parameter space
-                dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
-                dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
+                    # parameter space
+                    dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
+                    dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
+                    
+                    dfh['sina1'] = np.sin(dfh['a1'])
+                    dfh['cosa1'] = np.cos(dfh['a1'])
+                    
+                    ss = StandardScaler()
                 
-                dfh['sina1'] = np.sin(dfh['a1'])
-                dfh['cosa1'] = np.cos(dfh['a1'])
-                
-                ss = StandardScaler()
+                    dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
+                    dfs = np.multiply(dfs, self.model_parameters[1])
             
-                dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
-                dfs = np.multiply(dfs, self.model_parameters[1])
-        
-                self.clusters = DBSCAN(eps=DBSCAN_EPS  + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+                    self.clusters = DBSCAN(eps=DBSCAN_EPS  + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
 
-                if ii == -STEPS:
-                    dfh['s1'] = self.clusters
-                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-                else:
-                    dfh['s2'] = self.clusters
-                    dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
-                    maxs1 = dfh['s1'].max()
-                    cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
-                    s1 = dfh['s1'].values
-                    s1[cond] = dfh['s2'].values[cond]+maxs1
-                    dfh['s1'] = s1
-                    dfh['s1'] = dfh['s1'].astype('int64')
-                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+                    if ii == -STEPS:
+                        dfh['s1'] = self.clusters
+                        dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+                    else:
+                        dfh['s2'] = self.clusters
+                        dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
+                        maxs1 = dfh['s1'].max()
+                        cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
+                        s1 = dfh['s1'].values
+                        s1[cond] = dfh['s2'].values[cond]+maxs1
+                        dfh['s1'] = s1
+                        dfh['s1'] = dfh['s1'].astype('int64')
+                        dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
 
-            labels_loop1 = np.copy(dfh['s1'].values)
-            df = pd.DataFrame(labels_loop1)
-            df.to_csv(label_file1, index=False, header=['label'])
-  
- ### LOOP 2 ##########################################################################################
-
-        dfh['a0'] = np.arctan2(dfh.x,-dfh.y)
-        dfh['xd'] = -dfh.y/dfh['d']
-        dfh['yd'] = dfh.x/dfh['d']
-        
-        if os.path.exists(label_file2):
-            print('Loading dbscan loop 2 file: ' + label_file2)
-            labels_loop2 = pd.read_csv(label_file2).label.values
-        else:
-            for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
-                print ('\r steps: %d '%ii, end='',flush=True)
-
-                dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
-                dfh['zshift'] = dfh.z + self.model_parameters[2][1]
-                dfh['z1'] = dfh.zshift/dfh['r'] 
-                dfh['z2'] = dfh.zshift/dfh['d']
-                dfh['z3'] = np.log1p(np.absolute(dfh.zshift/dfh.r))*np.sign(dfh.zshift)
-
-                # parameter space
-                dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
-                dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
-        
-                dfh['sina1'] = np.sin(dfh['a1'])
-                dfh['cosa1'] = np.cos(dfh['a1'])
-        
-                ss = StandardScaler()
-        
-                dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
-                dfs = np.multiply(dfs, self.model_parameters[1])
-
-                self.clusters = DBSCAN(eps=DBSCAN_EPS + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
-
-                if ii == -STEPS:
-                    dfh['s1'] = self.clusters
-                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-                else:
-                    dfh['s2'] = self.clusters
-                    dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
-                    maxs1 = dfh['s1'].max()
-                    cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
-                    s1 = dfh['s1'].values
-                    s1[cond] = dfh['s2'].values[cond]+maxs1
-                    dfh['s1'] = s1
-                    dfh['s1'] = dfh['s1'].astype('int64')
-                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-
-            labels_loop2 = np.copy(dfh['s1'].values)
-            df = pd.DataFrame(labels_loop2)
-            df.to_csv(label_file2, index=False, header=['label'])
+                # Save the predicted tracks to a file so we don't need to re-calculate next time.
+                labels.append(np.copy(dfh['s1'].values))
+                df = pd.DataFrame(labels[loop])
+                df.to_csv(label_file, index=False, header=['label'])
  
- ### LOOP 3 ##########################################################################################
-        dfh['a0'] = np.arctan2(-dfh.y,-dfh.x)
-        dfh['xd'] = -dfh.x/dfh['d']
-        dfh['yd'] = -dfh.y/dfh['d']
-
-        if os.path.exists(label_file3):
-            print('Loading dbscan loop 3 file: ' + label_file3)
-            labels_loop3 = pd.read_csv(label_file3).label.values
-        else:
-            for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
-                print ('\r steps: %d '%ii, end='',flush=True)
-
-                dfh['zshift'] = dfh.z + self.model_parameters[2][2]
-                dfh['z1'] = dfh.zshift/dfh['r'] 
-                dfh['z2'] = dfh.zshift/dfh['d']
-                dfh['z3'] = np.log1p(np.absolute(dfh.zshift/dfh.r))*np.sign(dfh.zshift)
-    
-                dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
-        
-                # parameter space
-                dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
-                dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
-        
-                dfh['sina1'] = np.sin(dfh['a1'])
-                dfh['cosa1'] = np.cos(dfh['a1'])
-        
-                ss = StandardScaler()
-        
-                dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
-                dfs = np.multiply(dfs, self.model_parameters[1])
-
-                self.clusters = DBSCAN(eps=DBSCAN_EPS  + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
-
-                if ii == -STEPS:
-                    dfh['s1'] = self.clusters
-                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-                else:
-                    dfh['s2'] = self.clusters
-                    dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
-                    maxs1 = dfh['s1'].max()
-                    cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
-                    s1 = dfh['s1'].values
-                    s1[cond] = dfh['s2'].values[cond]+maxs1
-                    dfh['s1'] = s1
-                    dfh['s1'] = dfh['s1'].astype('int64')
-                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-
-            labels_loop3 = np.copy(dfh['s1'].values)
-            df = pd.DataFrame(labels_loop3)
-            df.to_csv(label_file3, index=False, header=['label'])
- 
- ### LOOP 4 ##########################################################################################
-  
-        dfh['a0'] = np.arctan2(-dfh.x,dfh.y)
-        dfh['xd'] = dfh.y/dfh['d']
-        dfh['yd'] = -dfh.x/dfh['d']
-
-        if os.path.exists(label_file4):
-            print('Loading dbscan loop 4 file: ' + label_file4)
-            labels_loop4 = pd.read_csv(label_file4).label.values
-        else:
-            for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
-                print ('\r steps: %d '%ii, end='',flush=True)
-
-                dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
-                dfh['zshift'] = dfh.z + self.model_parameters[2][3]
-                dfh['z1'] = dfh.zshift/dfh['r'] 
-                dfh['z2'] = dfh.zshift/dfh['d']
-                dfh['z3'] = np.log1p(np.absolute(dfh.zshift/dfh.r))*np.sign(dfh.zshift)
-    
-                            # parameter space
-                dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
-                dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
-        
-                dfh['sina1'] = np.sin(dfh['a1'])
-                dfh['cosa1'] = np.cos(dfh['a1'])
-        
-                ss = StandardScaler()
-        
-                dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
-                dfs = np.multiply(dfs, self.model_parameters[1])
-
-                self.clusters = DBSCAN(eps=DBSCAN_EPS + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
-
-                if ii == -STEPS:
-                    dfh['s1'] = self.clusters
-                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-                else:
-                    dfh['s2'] = self.clusters
-                    dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
-                    maxs1 = dfh['s1'].max()
-                    cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
-                    s1 = dfh['s1'].values
-                    s1[cond] = dfh['s2'].values[cond]+maxs1
-                    dfh['s1'] = s1
-                    dfh['s1'] = dfh['s1'].astype('int64')
-                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-
-            labels_loop4 = np.copy(dfh['s1'].values)
-            df = pd.DataFrame(labels_loop4)
-            df.to_csv(label_file4, index=False, header=['label'])
- 
- ### LOOP 5 ##########################################################################################
-  
-        dfh['a0'] = np.arctan2(dfh.y,dfh.x)
-        dfh['xd'] = dfh.x/dfh['d']
-        dfh['yd'] = dfh.y/dfh['d']
-
-        if os.path.exists(label_file5):
-            print('Loading dbscan loop 5 file: ' + label_file5)
-            labels_loop5 = pd.read_csv(label_file5).label.values
-        else:
-            for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
-                print ('\r steps: %d '%ii, end='',flush=True)
-
-                dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
-                dfh['zshift'] = dfh.z + self.model_parameters[2][4]
-                dfh['z1'] = dfh.zshift/dfh['r'] 
-                dfh['z2'] = dfh.zshift/dfh['d']
-                dfh['z3'] = np.log1p(np.absolute(dfh.zshift/dfh.r))*np.sign(dfh.zshift)
-    
-                            # parameter space
-                dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
-                dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
-        
-                dfh['sina1'] = np.sin(dfh['a1'])
-                dfh['cosa1'] = np.cos(dfh['a1'])
-        
-                ss = StandardScaler()
-        
-                dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
-                dfs = np.multiply(dfs, self.model_parameters[1])
-
-                self.clusters = DBSCAN(eps=DBSCAN_EPS + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
-
-                if ii == -STEPS:
-                    dfh['s1'] = self.clusters
-                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-                else:
-                    dfh['s2'] = self.clusters
-                    dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
-                    maxs1 = dfh['s1'].max()
-                    cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
-                    s1 = dfh['s1'].values
-                    s1[cond] = dfh['s2'].values[cond]+maxs1
-                    dfh['s1'] = s1
-                    dfh['s1'] = dfh['s1'].astype('int64')
-                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-
-            labels_loop5 = np.copy(dfh['s1'].values)
-            df = pd.DataFrame(labels_loop5)
-            df.to_csv(label_file5, index=False, header=['label'])
-
-### LOOP 6 ##########################################################################################
-
-        dfh['a0'] = np.arctan2(dfh.x,-dfh.y)
-        dfh['xd'] = -dfh.y/dfh['d']
-        dfh['yd'] = dfh.x/dfh['d']
-        
-        if os.path.exists(label_file6):
-            print('Loading dbscan loop 6 file: ' + label_file6)
-            labels_loop6 = pd.read_csv(label_file6).label.values
-        else:
-            for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
-                print ('\r steps: %d '%ii, end='',flush=True)
-
-                dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
-                dfh['zshift'] = dfh.z + self.model_parameters[2][5]
-                dfh['z1'] = dfh.zshift/dfh['r'] 
-                dfh['z2'] = dfh.zshift/dfh['d']
-                dfh['z3'] = np.log1p(np.absolute(dfh.zshift/dfh.r))*np.sign(dfh.zshift)
-
-                # parameter space
-                dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
-                dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
-        
-                dfh['sina1'] = np.sin(dfh['a1'])
-                dfh['cosa1'] = np.cos(dfh['a1'])
-        
-                ss = StandardScaler()
-        
-                dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
-                dfs = np.multiply(dfs, self.model_parameters[1])
-
-                self.clusters = DBSCAN(eps=DBSCAN_EPS + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
-
-                if ii == -STEPS:
-                    dfh['s1'] = self.clusters
-                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-                else:
-                    dfh['s2'] = self.clusters
-                    dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
-                    maxs1 = dfh['s1'].max()
-                    cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
-                    s1 = dfh['s1'].values
-                    s1[cond] = dfh['s2'].values[cond]+maxs1
-                    dfh['s1'] = s1
-                    dfh['s1'] = dfh['s1'].astype('int64')
-                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-
-            labels_loop6 = np.copy(dfh['s1'].values)
-            df = pd.DataFrame(labels_loop6)
-            df.to_csv(label_file6, index=False, header=['label'])
- 
- ### LOOP 7 ##########################################################################################
-        dfh['a0'] = np.arctan2(-dfh.y,-dfh.x)
-        dfh['xd'] = -dfh.x/dfh['d']
-        dfh['yd'] = -dfh.y/dfh['d']
-
-        if os.path.exists(label_file7):
-            print('Loading dbscan loop 7 file: ' + label_file7)
-            labels_loop7 = pd.read_csv(label_file7).label.values
-        else:
-            for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
-                print ('\r steps: %d '%ii, end='',flush=True)
-
-                dfh['zshift'] = dfh.z + self.model_parameters[2][6]
-                dfh['z1'] = dfh.zshift/dfh['r'] 
-                dfh['z2'] = dfh.zshift/dfh['d']
-                dfh['z3'] = np.log1p(np.absolute(dfh.zshift/dfh.r))*np.sign(dfh.zshift)
-    
-                dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
-        
-                # parameter space
-                dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
-                dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
-        
-                dfh['sina1'] = np.sin(dfh['a1'])
-                dfh['cosa1'] = np.cos(dfh['a1'])
-        
-                ss = StandardScaler()
-        
-                dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
-                dfs = np.multiply(dfs, self.model_parameters[1])
-
-                self.clusters = DBSCAN(eps=DBSCAN_EPS  + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
-
-                if ii == -STEPS:
-                    dfh['s1'] = self.clusters
-                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-                else:
-                    dfh['s2'] = self.clusters
-                    dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
-                    maxs1 = dfh['s1'].max()
-                    cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
-                    s1 = dfh['s1'].values
-                    s1[cond] = dfh['s2'].values[cond]+maxs1
-                    dfh['s1'] = s1
-                    dfh['s1'] = dfh['s1'].astype('int64')
-                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-
-            labels_loop7 = np.copy(dfh['s1'].values)
-            df = pd.DataFrame(labels_loop7)
-            df.to_csv(label_file7, index=False, header=['label'])
- 
- ### LOOP 8 ##########################################################################################
-  
-        dfh['a0'] = np.arctan2(-dfh.x,dfh.y)
-        dfh['xd'] = dfh.y/dfh['d']
-        dfh['yd'] = -dfh.x/dfh['d']
-
-        if os.path.exists(label_file8):
-            print('Loading dbscan loop 8 file: ' + label_file8)
-            labels_loop8 = pd.read_csv(label_file8).label.values
-        else:
-            for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
-                print ('\r steps: %d '%ii, end='',flush=True)
-
-                dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
-                dfh['zshift'] = dfh.z + self.model_parameters[2][7]
-                dfh['z1'] = dfh.zshift/dfh['r'] 
-                dfh['z2'] = dfh.zshift/dfh['d']
-                dfh['z3'] = np.log1p(np.absolute(dfh.zshift/dfh.r))*np.sign(dfh.zshift)
-    
-                            # parameter space
-                dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
-                dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
-        
-                dfh['sina1'] = np.sin(dfh['a1'])
-                dfh['cosa1'] = np.cos(dfh['a1'])
-        
-                ss = StandardScaler()
-        
-                dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
-                dfs = np.multiply(dfs, self.model_parameters[1])
-
-                self.clusters = DBSCAN(eps=DBSCAN_EPS + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
-
-                if ii == -STEPS:
-                    dfh['s1'] = self.clusters
-                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-                else:
-                    dfh['s2'] = self.clusters
-                    dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
-                    maxs1 = dfh['s1'].max()
-                    cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
-                    s1 = dfh['s1'].values
-                    s1[cond] = dfh['s2'].values[cond]+maxs1
-                    dfh['s1'] = s1
-                    dfh['s1'] = dfh['s1'].astype('int64')
-                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-
-            labels_loop8 = np.copy(dfh['s1'].values)
-            df = pd.DataFrame(labels_loop8)
-            df.to_csv(label_file8, index=False, header=['label'])
- 
-        return (labels_loop1, labels_loop2, labels_loop3, labels_loop4, labels_loop5, labels_loop6, labels_loop7, labels_loop8)
+        return (labels)
 
     def predict(self, hits, label_file_root): 
-        (l1, l2, l3, l4, l5, l6, l7, l8)  = self._dbscan(hits, label_file_root)
+        (labels)  = self._dbscan(hits, label_file_root)
 
-        return (l1, l2, l3, l4, l5, l6, l7, l8)
+        return (labels)
 
 def create_one_event_submission(event_id, hits, labels):
     sub_data = np.column_stack(([event_id]*len(hits), hits.hit_id.values, labels))
     submission = pd.DataFrame(data=sub_data, columns=["event_id", "hit_id", "track_id"]).astype(int)
     return submission
-
-def hack_one_last_run(labels, labels2, hits2):
-    labels2_x = np.copy(labels)
-    labels2_x[labels2_x != 0] = 0
-
-    # Expand our labels to include zero(0) for any hits that were removed.
-    hits2_indexes = hits2.index.tolist()
-    fix_ix = 0
-    for hits2_ix in hits2_indexes:
-        labels2_x[hits2_ix] = labels2[fix_ix]
-        fix_ix = fix_ix + 1
-    return labels2_x
-
 
 def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_root, unmatched_only=True, filter_hits=True, track_extension=True):
     """ Run a round of predictions on all or a subset of remaining hits.
@@ -543,246 +205,65 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
         hits_to_predict = hits_to_predict.drop(hits_to_predict.index[drop_indices])
 
     # Run predictions on the input model
-    (l1, l2, l3, l4, l5, l6, l7, l8) = model.predict(hits_to_predict, label_file_root)
+    (labels_subset) = model.predict(hits_to_predict, label_file_root)
+    labels_full = []
 
     # Make sure max track ID is not larger than length of labels list.
-    l1 = sd.renumber_labels(l1)
-    l2 = sd.renumber_labels(l2)
-    l3 = sd.renumber_labels(l3)
-    l4 = sd.renumber_labels(l4)
-    l5 = sd.renumber_labels(l5)
-    l6 = sd.renumber_labels(l6)
-    l7 = sd.renumber_labels(l7)
-    l8 = sd.renumber_labels(l8)
-    
+    for i in range(len(labels)):
+        labels_subset[i] = merge.renumber_labels(labels_subset[i])
 
-    # If only predicting on unmatched hits, add any new predicted tracks directly
-    # into the output labels. Otherwise, just return the newly predicted output labels.
-    if unmatched_only:
-        l1a = np.copy(all_labels)
-        l1[l1 == 0] = 0 - len(all_labels) - 1
-        l1 = l1 + len(all_labels) + 1
-        l1a[l1a == 0] = l1
-        
-        l2a = np.copy(all_labels)
-        l2[l2 == 0] = 0 - len(all_labels) - 1
-        l2 = l2 + len(all_labels) + 1
-        l2a[l2a == 0] = l2
-        
-        l3a = np.copy(all_labels)
-        l3[l3 == 0] = 0 - len(all_labels) - 1
-        l3 = l3 + len(all_labels) + 1
-        l3a[l3a == 0] = l3
-        
-        l4a = np.copy(all_labels)
-        l4[l4 == 0] = 0 - len(all_labels) - 1
-        l4 = l4 + len(all_labels) + 1
-        l4a[l4a == 0] = l4
-        
-        l5a = np.copy(all_labels)
-        l5[l5 == 0] = 0 - len(all_labels) - 1
-        l5 = l5 + len(all_labels) + 1
-        l5a[l5a == 0] = l5
-        
-        l6a = np.copy(all_labels)
-        l6[l6 == 0] = 0 - len(all_labels) - 1
-        l6 = l6 + len(all_labels) + 1
-        l6a[l6a == 0] = l6
-        
-        l7a = np.copy(all_labels)
-        l7[l7 == 0] = 0 - len(all_labels) - 1
-        l7 = l7 + len(all_labels) + 1
-        l7a[l7a == 0] = l7
+        # If only predicting on unmatched hits, add any new predicted tracks directly
+        # into the output labels. Otherwise, just return the newly predicted output labels.
+        if unmatched_only:
+            labels_full.append(np.copy(all_labels))
+            labels_subset[i][labels_subset[i] == 0] = 0 - len(all_labels) - 1
+            labels_subset[i] = labels_subset[i] + len(all_labels) + 1
+            labels_full[i][labels_full[i] == 0] = labels_subset[i]
+        else:
+            labels_full.append(np.copy(labels_subset[i]))
 
-        l8a = np.copy(all_labels)
-        l8[l8 == 0] = 0 - len(all_labels) - 1
-        l8 = l8 + len(all_labels) + 1
-        l8a[l8a == 0] = l8
+        if truth is not None:
+            one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
+            score = score_event(truth, one_submission)
+            print("Unfiltered dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
 
-        
-    else:
-        l1a = l1
-        l2a = l2
-        l3a = l3
-        l4a = l4
-        l5a = l5
-        l6a = l6
-        l7a = l7
-        l8a = l8
-        
-
-    if truth is not None:
-        one_submission = create_one_event_submission(event_id, all_hits, l1a)
-        score = score_event(truth, one_submission)
-        print("Unfiltered dbscan loop 1 score for event %d: %.8f" % (event_id, score))
-        one_submission = create_one_event_submission(event_id, all_hits, l2a)
-        score = score_event(truth, one_submission)
-        print("Unfiltered dbscan loop 2 score for event %d: %.8f" % (event_id, score))
-        one_submission = create_one_event_submission(event_id, all_hits, l3a)
-        score = score_event(truth, one_submission)
-        print("Unfiltered dbscan loop 3 score for event %d: %.8f" % (event_id, score))
-        one_submission = create_one_event_submission(event_id, all_hits, l4a)
-        score = score_event(truth, one_submission)
-        print("Unfiltered dbscan loop 4 score for event %d: %.8f" % (event_id, score))
-        one_submission = create_one_event_submission(event_id, all_hits, l5a)
-        score = score_event(truth, one_submission)
-        print("Unfiltered dbscan loop 5 score for event %d: %.8f" % (event_id, score))
-        one_submission = create_one_event_submission(event_id, all_hits, l6a)
-        score = score_event(truth, one_submission)
-        print("Unfiltered dbscan loop 6 score for event %d: %.8f" % (event_id, score))
-        one_submission = create_one_event_submission(event_id, all_hits, l7a)
-        score = score_event(truth, one_submission)
-        print("Unfiltered dbscan loop 7 score for event %d: %.8f" % (event_id, score))
-        one_submission = create_one_event_submission(event_id, all_hits, l8a)
-        score = score_event(truth, one_submission)
-        print("Unfiltered dbscan loop 8 score for event %d: %.8f" % (event_id, score))
-    
-
-    # If desired, extend tracks
-    if track_extension:
-        for i in range(EXTENSION_ATTEMPT):
-            limit = EXTENSION_LIMIT_START + EXTENSION_LIMIT_INTERVAL*i
-            l1a = extend_labels(i, l1a, all_hits, do_swap=i%2==1, limit=(limit))
-            l2a = extend_labels(i, l2a, all_hits, do_swap=i%2==1, limit=(limit))
-            l3a = extend_labels(i, l3a, all_hits, do_swap=i%2==1, limit=(limit))
-            l4a = extend_labels(i, l4a, all_hits, do_swap=i%2==1, limit=(limit))
-            l5a = extend_labels(i, l5a, all_hits, do_swap=i%2==1, limit=(limit))
-            l6a = extend_labels(i, l6a, all_hits, do_swap=i%2==1, limit=(limit))
-            l7a = extend_labels(i, l7a, all_hits, do_swap=i%2==1, limit=(limit))
-            l8a = extend_labels(i, l8a, all_hits, do_swap=i%2==1, limit=(limit))
+        # If desired, extend tracks
+        if track_extension:
+            for ii in range(EXTENSION_ATTEMPT):
+                limit = EXTENSION_LIMIT_START + EXTENSION_LIMIT_INTERVAL*i
+                labels_full[i] = extend_labels(ii, labels_full[i], all_hits, do_swap=ii%2==1, limit=(limit))
+                
+            labels_full[i] = merge.renumber_labels(labels_full[i])
             
-    
-        l1a = sd.renumber_labels(l1a)
-        l2a = sd.renumber_labels(l2a)
-        l3a = sd.renumber_labels(l3a)
-        l4a = sd.renumber_labels(l4a)
-        l5a = sd.renumber_labels(l5a)
-        l6a = sd.renumber_labels(l6a)
-        l7a = sd.renumber_labels(l7a)
-        l8a = sd.renumber_labels(l8a)
-        
-        if truth is not None:
-            one_submission = create_one_event_submission(event_id, all_hits, l1a)
-            score = score_event(truth, one_submission)
-            print("Unfiltered extended dbscan loop 1 score for event %d: %.8f" % (event_id, score))
-            one_submission = create_one_event_submission(event_id, all_hits, l2a)
-            score = score_event(truth, one_submission)
-            print("Unfiltered extended dbscan loop 2 score for event %d: %.8f" % (event_id, score))
-            one_submission = create_one_event_submission(event_id, all_hits, l3a)
-            score = score_event(truth, one_submission)
-            print("Unfiltered extended dbscan loop 3 score for event %d: %.8f" % (event_id, score))
-            one_submission = create_one_event_submission(event_id, all_hits, l4a)
-            score = score_event(truth, one_submission)
-            print("Unfiltered extended dbscan loop 4 score for event %d: %.8f" % (event_id, score))
-            one_submission = create_one_event_submission(event_id, all_hits, l5a)
-            score = score_event(truth, one_submission)
-            print("Unfiltered extended dbscan loop 5 score for event %d: %.8f" % (event_id, score))
-            one_submission = create_one_event_submission(event_id, all_hits, l6a)
-            score = score_event(truth, one_submission)
-            print("Unfiltered extended dbscan loop 6 score for event %d: %.8f" % (event_id, score))
-            one_submission = create_one_event_submission(event_id, all_hits, l7a)
-            score = score_event(truth, one_submission)
-            print("Unfiltered extended dbscan loop 7 score for event %d: %.8f" % (event_id, score))
-            one_submission = create_one_event_submission(event_id, all_hits, l8a)
-            score = score_event(truth, one_submission)
-            print("Unfiltered extended dbscan loop 8 score for event %d: %.8f" % (event_id, score))
-        
-        
-    else:
-        l1a = sd.renumber_labels(l1a)
-        l2a = sd.renumber_labels(l2a)
-        l3a = sd.renumber_labels(l3a)
-        l4a = sd.renumber_labels(l4a)
-        l5a = sd.renumber_labels(l5a)
-        l6a = sd.renumber_labels(l6a)
-        l7a = sd.renumber_labels(l7a)
-        l8a = sd.renumber_labels(l8a)
+            if truth is not None:
+                one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
+                score = score_event(truth, one_submission)
+                print("Unfiltered extended dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
+        else:
+            labels_full[i] = merge.renumber_labels(labels_full[i])
 
-    if filter_hits:
-        # Filter out tracks that are too small, as well as hits that look
-        # like outliers, i.e. duplicate-z values, slopes that do not match
-        # other hits in the track, etc.
-        l1a = merge.remove_outliers(l1a, all_hits, smallest_track_size=5, print_counts=False)
-        l2a = merge.remove_outliers(l2a, all_hits, smallest_track_size=5, print_counts=False)
-        l3a = merge.remove_outliers(l3a, all_hits, smallest_track_size=5, print_counts=False)
-        l4a = merge.remove_outliers(l4a, all_hits, smallest_track_size=5, print_counts=False)
-        l5a = merge.remove_outliers(l5a, all_hits, smallest_track_size=5, print_counts=False)
-        l6a = merge.remove_outliers(l6a, all_hits, smallest_track_size=5, print_counts=False)
-        l7a = merge.remove_outliers(l7a, all_hits, smallest_track_size=5, print_counts=False)
-        l8a = merge.remove_outliers(l8a, all_hits, smallest_track_size=5, print_counts=False)
-        l1a = sd.renumber_labels(l1a)
-        l2a = sd.renumber_labels(l2a)
-        l3a = sd.renumber_labels(l3a)
-        l4a = sd.renumber_labels(l4a)
-        l5a = sd.renumber_labels(l5a)
-        l6a = sd.renumber_labels(l6a)
-        l7a = sd.renumber_labels(l7a)
-        l8a = sd.renumber_labels(l8a)
+        if filter_hits:
+            # Filter out tracks that are too small, as well as hits that look
+            # like outliers, i.e. duplicate-z values, slopes that do not match
+            # other hits in the track, etc.
+            labels_full[i] = merge.remove_outliers(labels_full[i], all_hits, smallest_track_size=5, print_counts=False)
+            labels_full[i] = merge.renumber_labels(labels_full[i])
 
-        if truth is not None:
-            one_submission = create_one_event_submission(event_id, all_hits, l1a)
-            score = score_event(truth, one_submission)
-            print("Filtered non-outlier dbscan loop 1 score for event %d: %.8f" % (event_id, score))
-            one_submission = create_one_event_submission(event_id, all_hits, l2a)
-            score = score_event(truth, one_submission)
-            print("Filtered non-outlier dbscan loop 2 score for event %d: %.8f" % (event_id, score))
-            one_submission = create_one_event_submission(event_id, all_hits, l3a)
-            score = score_event(truth, one_submission)
-            print("Filtered non-outlier dbscan loop 3 score for event %d: %.8f" % (event_id, score))
-            one_submission = create_one_event_submission(event_id, all_hits, l4a)
-            score = score_event(truth, one_submission)
-            print("Filtered non-outlier dbscan loop 4 score for event %d: %.8f" % (event_id, score))
-            one_submission = create_one_event_submission(event_id, all_hits, l5a)
-            score = score_event(truth, one_submission)
-            print("Filtered non-outlier dbscan loop 5 score for event %d: %.8f" % (event_id, score))
-            one_submission = create_one_event_submission(event_id, all_hits, l6a)
-            score = score_event(truth, one_submission)
-            print("Filtered non-outlier dbscan loop 6 score for event %d: %.8f" % (event_id, score))
-            one_submission = create_one_event_submission(event_id, all_hits, l7a)
-            score = score_event(truth, one_submission)
-            print("Filtered non-outlier dbscan loop 7 score for event %d: %.8f" % (event_id, score))
-            one_submission = create_one_event_submission(event_id, all_hits, l8a)
-            score = score_event(truth, one_submission)
-            print("Filtered non-outlier dbscan loop 8 score for event %d: %.8f" % (event_id, score))
-        
+            if truth is not None:
+                one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
+                score = score_event(truth, one_submission)
+                print("Filtered non-outlier dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
 
     # Merge all dbscan loop labels together
-    labels_merged = merge.heuristic_merge_tracks(l1a, l2a, print_summary=False)
-    if truth is not None:
-        one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
-        score = score_event(truth, one_submission)
-        print("Merged loop 1&2 score for event %d: %.8f" % (event_id, score))
-    labels_merged = merge.heuristic_merge_tracks(labels_merged, l3a, print_summary=False)
-    if truth is not None:
-        one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
-        score = score_event(truth, one_submission)
-        print("Merged loop 1&2&3 score for event %d: %.8f" % (event_id, score))
-    labels_merged = merge.heuristic_merge_tracks(labels_merged, l4a, print_summary=False)
-    if truth is not None:
-        one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
-        score = score_event(truth, one_submission)
-        print("Merged loop 1&2&3&4 score for event %d: %.8f" % (event_id, score))
-    labels_merged = merge.heuristic_merge_tracks(labels_merged, l5a, print_summary=False)
-    if truth is not None:
-        one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
-        score = score_event(truth, one_submission)
-        print("Merged loop 1&2&3&4&5 score for event %d: %.8f" % (event_id, score))
-    labels_merged = merge.heuristic_merge_tracks(labels_merged, l6a, print_summary=False)
-    if truth is not None:
-        one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
-        score = score_event(truth, one_submission)
-        print("Merged loop 1&2&3&4&5&6 score for event %d: %.8f" % (event_id, score))
-    labels_merged = merge.heuristic_merge_tracks(labels_merged, l7a, print_summary=False)
-    if truth is not None:
-        one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
-        score = score_event(truth, one_submission)
-        print("Merged loop 1&2&3&4&5&6&7 score for event %d: %.8f" % (event_id, score))
-    labels_merged = merge.heuristic_merge_tracks(labels_merged, l8a, print_summary=False)
-    if truth is not None:
-        one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
-        score = score_event(truth, one_submission)
-        print("Merged loop 1&2&3&4&5&6&7&8 score for event %d: %.8f" % (event_id, score))
-    
+    for i in range(len(labels_full)):
+        if i == 0:
+            labels_merged = labels_full[0]
+        else:
+            labels_merged = merge.heuristic_merge_tracks(labels_merged, labels_full[i], print_summary=False)
+            if truth is not None:
+                one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
+                score = score_event(truth, one_submission)
+                print("Merged loop 1-%d score for event %d: %.8f" % (i+1,event_id, score))
 
     return (labels_merged)
 
