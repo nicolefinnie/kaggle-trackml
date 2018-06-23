@@ -41,8 +41,7 @@ EXTENSION_LIMIT_START = 0.03
 EXTENSION_LIMIT_INTERVAL = 0.005
 
 
-DBSCAN_EPS_MATRIX_BASE = [0.0033, 0.0033, 0.0033, 0.0033]
-
+DBSCAN_EPS = 0.0033
 
 print ('########################################################################')
 
@@ -64,6 +63,11 @@ class Clusterer(object):
         label_file2 = label_file_root + '_dbscan2.csv'
         label_file3 = label_file_root + '_dbscan3.csv'
         label_file4 = label_file_root + '_dbscan4.csv'
+        label_file5 = label_file_root + '_dbscan5.csv'
+        label_file6 = label_file_root + '_dbscan6.csv'
+        label_file7 = label_file_root + '_dbscan7.csv'
+        label_file8 = label_file_root + '_dbscan8.csv'
+        
 
         dfh['d'] = np.sqrt(dfh.x**2+dfh.y**2+dfh.z**2)
         dfh['r'] = np.sqrt(dfh.x**2+dfh.y**2)
@@ -71,6 +75,8 @@ class Clusterer(object):
         #theta
         dfh['rz'] = np.arctan2(dfh.r, dfh.z)
         rr = dfh['r']/1000      
+
+ ### LOOP 1 ##########################################################################################
 
         dfh['a0'] = np.arctan2(dfh.y,dfh.x)
         dfh['xd'] = dfh.x/dfh['d']
@@ -82,7 +88,7 @@ class Clusterer(object):
         else:
             for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
                 print ('\r steps: %d '%ii, end='',flush=True)
-                dfh['zshift'] = dfh.z + self.model_parameters[3][0]
+                dfh['zshift'] = dfh.z + self.model_parameters[2][0]
                 dfh['z1'] = dfh.zshift/dfh['r'] 
                 dfh['z2'] = dfh.zshift/dfh['d']
                 dfh['z3'] = np.log1p(np.absolute(dfh.zshift/dfh.r))*np.sign(dfh.zshift)
@@ -101,7 +107,7 @@ class Clusterer(object):
                 dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
                 dfs = np.multiply(dfs, self.model_parameters[1])
         
-                self.clusters = DBSCAN(eps=self.model_parameters[2][0]  + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+                self.clusters = DBSCAN(eps=DBSCAN_EPS  + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
 
                 if ii == -STEPS:
                     dfh['s1'] = self.clusters
@@ -120,6 +126,8 @@ class Clusterer(object):
             labels_loop1 = np.copy(dfh['s1'].values)
             df = pd.DataFrame(labels_loop1)
             df.to_csv(label_file1, index=False, header=['label'])
+  
+ ### LOOP 2 ##########################################################################################
 
         dfh['a0'] = np.arctan2(dfh.x,-dfh.y)
         dfh['xd'] = -dfh.y/dfh['d']
@@ -133,7 +141,7 @@ class Clusterer(object):
                 print ('\r steps: %d '%ii, end='',flush=True)
 
                 dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
-                dfh['zshift'] = dfh.z + self.model_parameters[3][1]
+                dfh['zshift'] = dfh.z + self.model_parameters[2][1]
                 dfh['z1'] = dfh.zshift/dfh['r'] 
                 dfh['z2'] = dfh.zshift/dfh['d']
                 dfh['z3'] = np.log1p(np.absolute(dfh.zshift/dfh.r))*np.sign(dfh.zshift)
@@ -150,7 +158,7 @@ class Clusterer(object):
                 dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
                 dfs = np.multiply(dfs, self.model_parameters[1])
 
-                self.clusters = DBSCAN(eps=self.model_parameters[2][1] + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+                self.clusters = DBSCAN(eps=DBSCAN_EPS + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
 
                 if ii == -STEPS:
                     dfh['s1'] = self.clusters
@@ -170,6 +178,7 @@ class Clusterer(object):
             df = pd.DataFrame(labels_loop2)
             df.to_csv(label_file2, index=False, header=['label'])
  
+ ### LOOP 3 ##########################################################################################
         dfh['a0'] = np.arctan2(-dfh.y,-dfh.x)
         dfh['xd'] = -dfh.x/dfh['d']
         dfh['yd'] = -dfh.y/dfh['d']
@@ -181,7 +190,7 @@ class Clusterer(object):
             for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
                 print ('\r steps: %d '%ii, end='',flush=True)
 
-                dfh['zshift'] = dfh.z + self.model_parameters[3][2]
+                dfh['zshift'] = dfh.z + self.model_parameters[2][2]
                 dfh['z1'] = dfh.zshift/dfh['r'] 
                 dfh['z2'] = dfh.zshift/dfh['d']
                 dfh['z3'] = np.log1p(np.absolute(dfh.zshift/dfh.r))*np.sign(dfh.zshift)
@@ -200,7 +209,7 @@ class Clusterer(object):
                 dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
                 dfs = np.multiply(dfs, self.model_parameters[1])
 
-                self.clusters = DBSCAN(eps=self.model_parameters[2][2]  + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+                self.clusters = DBSCAN(eps=DBSCAN_EPS  + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
 
                 if ii == -STEPS:
                     dfh['s1'] = self.clusters
@@ -220,6 +229,12 @@ class Clusterer(object):
             df = pd.DataFrame(labels_loop3)
             df.to_csv(label_file3, index=False, header=['label'])
  
+ ### LOOP 4 ##########################################################################################
+  
+        dfh['a0'] = np.arctan2(-dfh.x,dfh.y)
+        dfh['xd'] = dfh.y/dfh['d']
+        dfh['yd'] = -dfh.x/dfh['d']
+
         if os.path.exists(label_file4):
             print('Loading dbscan loop 4 file: ' + label_file4)
             labels_loop4 = pd.read_csv(label_file4).label.values
@@ -228,7 +243,7 @@ class Clusterer(object):
                 print ('\r steps: %d '%ii, end='',flush=True)
 
                 dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
-                dfh['zshift'] = dfh.z + self.model_parameters[3][3]
+                dfh['zshift'] = dfh.z + self.model_parameters[2][3]
                 dfh['z1'] = dfh.zshift/dfh['r'] 
                 dfh['z2'] = dfh.zshift/dfh['d']
                 dfh['z3'] = np.log1p(np.absolute(dfh.zshift/dfh.r))*np.sign(dfh.zshift)
@@ -245,7 +260,7 @@ class Clusterer(object):
                 dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
                 dfs = np.multiply(dfs, self.model_parameters[1])
 
-                self.clusters = DBSCAN(eps=self.model_parameters[2][3] + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+                self.clusters = DBSCAN(eps=DBSCAN_EPS + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
 
                 if ii == -STEPS:
                     dfh['s1'] = self.clusters
@@ -264,13 +279,217 @@ class Clusterer(object):
             labels_loop4 = np.copy(dfh['s1'].values)
             df = pd.DataFrame(labels_loop4)
             df.to_csv(label_file4, index=False, header=['label'])
+ 
+ ### LOOP 5 ##########################################################################################
+  
+        dfh['a0'] = np.arctan2(dfh.y,dfh.x)
+        dfh['xd'] = dfh.x/dfh['d']
+        dfh['yd'] = dfh.y/dfh['d']
 
-        return (labels_loop1, labels_loop2, labels_loop3, labels_loop4)
+        if os.path.exists(label_file5):
+            print('Loading dbscan loop 5 file: ' + label_file5)
+            labels_loop5 = pd.read_csv(label_file5).label.values
+        else:
+            for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
+                print ('\r steps: %d '%ii, end='',flush=True)
+
+                dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
+                dfh['zshift'] = dfh.z + self.model_parameters[2][4]
+                dfh['z1'] = dfh.zshift/dfh['r'] 
+                dfh['z2'] = dfh.zshift/dfh['d']
+                dfh['z3'] = np.log1p(np.absolute(dfh.zshift/dfh.r))*np.sign(dfh.zshift)
+    
+                            # parameter space
+                dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
+                dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
+        
+                dfh['sina1'] = np.sin(dfh['a1'])
+                dfh['cosa1'] = np.cos(dfh['a1'])
+        
+                ss = StandardScaler()
+        
+                dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
+                dfs = np.multiply(dfs, self.model_parameters[1])
+
+                self.clusters = DBSCAN(eps=DBSCAN_EPS + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+
+                if ii == -STEPS:
+                    dfh['s1'] = self.clusters
+                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+                else:
+                    dfh['s2'] = self.clusters
+                    dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
+                    maxs1 = dfh['s1'].max()
+                    cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
+                    s1 = dfh['s1'].values
+                    s1[cond] = dfh['s2'].values[cond]+maxs1
+                    dfh['s1'] = s1
+                    dfh['s1'] = dfh['s1'].astype('int64')
+                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+
+            labels_loop5 = np.copy(dfh['s1'].values)
+            df = pd.DataFrame(labels_loop5)
+            df.to_csv(label_file5, index=False, header=['label'])
+
+### LOOP 6 ##########################################################################################
+
+        dfh['a0'] = np.arctan2(dfh.x,-dfh.y)
+        dfh['xd'] = -dfh.y/dfh['d']
+        dfh['yd'] = dfh.x/dfh['d']
+        
+        if os.path.exists(label_file2):
+            print('Loading dbscan loop 6 file: ' + label_file6)
+            labels_loop6 = pd.read_csv(label_file6).label.values
+        else:
+            for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
+                print ('\r steps: %d '%ii, end='',flush=True)
+
+                dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
+                dfh['zshift'] = dfh.z + self.model_parameters[2][5]
+                dfh['z1'] = dfh.zshift/dfh['r'] 
+                dfh['z2'] = dfh.zshift/dfh['d']
+                dfh['z3'] = np.log1p(np.absolute(dfh.zshift/dfh.r))*np.sign(dfh.zshift)
+
+                # parameter space
+                dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
+                dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
+        
+                dfh['sina1'] = np.sin(dfh['a1'])
+                dfh['cosa1'] = np.cos(dfh['a1'])
+        
+                ss = StandardScaler()
+        
+                dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
+                dfs = np.multiply(dfs, self.model_parameters[1])
+
+                self.clusters = DBSCAN(eps=DBSCAN_EPS + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+
+                if ii == -STEPS:
+                    dfh['s1'] = self.clusters
+                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+                else:
+                    dfh['s2'] = self.clusters
+                    dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
+                    maxs1 = dfh['s1'].max()
+                    cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
+                    s1 = dfh['s1'].values
+                    s1[cond] = dfh['s2'].values[cond]+maxs1
+                    dfh['s1'] = s1
+                    dfh['s1'] = dfh['s1'].astype('int64')
+                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+
+            labels_loop6 = np.copy(dfh['s1'].values)
+            df = pd.DataFrame(labels_loop6)
+            df.to_csv(label_file6, index=False, header=['label'])
+ 
+ ### LOOP 7 ##########################################################################################
+        dfh['a0'] = np.arctan2(-dfh.y,-dfh.x)
+        dfh['xd'] = -dfh.x/dfh['d']
+        dfh['yd'] = -dfh.y/dfh['d']
+
+        if os.path.exists(label_file7):
+            print('Loading dbscan loop 7 file: ' + label_file7)
+            labels_loop7 = pd.read_csv(label_file7).label.values
+        else:
+            for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
+                print ('\r steps: %d '%ii, end='',flush=True)
+
+                dfh['zshift'] = dfh.z + self.model_parameters[2][6]
+                dfh['z1'] = dfh.zshift/dfh['r'] 
+                dfh['z2'] = dfh.zshift/dfh['d']
+                dfh['z3'] = np.log1p(np.absolute(dfh.zshift/dfh.r))*np.sign(dfh.zshift)
+    
+                dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
+        
+                # parameter space
+                dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
+                dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
+        
+                dfh['sina1'] = np.sin(dfh['a1'])
+                dfh['cosa1'] = np.cos(dfh['a1'])
+        
+                ss = StandardScaler()
+        
+                dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
+                dfs = np.multiply(dfs, self.model_parameters[1])
+
+                self.clusters = DBSCAN(eps=DBSCAN_EPS  + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+
+                if ii == -STEPS:
+                    dfh['s1'] = self.clusters
+                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+                else:
+                    dfh['s2'] = self.clusters
+                    dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
+                    maxs1 = dfh['s1'].max()
+                    cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
+                    s1 = dfh['s1'].values
+                    s1[cond] = dfh['s2'].values[cond]+maxs1
+                    dfh['s1'] = s1
+                    dfh['s1'] = dfh['s1'].astype('int64')
+                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+
+            labels_loop7 = np.copy(dfh['s1'].values)
+            df = pd.DataFrame(labels_loop7)
+            df.to_csv(label_file7, index=False, header=['label'])
+ 
+ ### LOOP 8 ##########################################################################################
+  
+        dfh['a0'] = np.arctan2(-dfh.x,dfh.y)
+        dfh['xd'] = dfh.y/dfh['d']
+        dfh['yd'] = -dfh.x/dfh['d']
+
+        if os.path.exists(label_file8):
+            print('Loading dbscan loop 8 file: ' + label_file8)
+            labels_loop8 = pd.read_csv(label_file8).label.values
+        else:
+            for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
+                print ('\r steps: %d '%ii, end='',flush=True)
+
+                dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
+                dfh['zshift'] = dfh.z + self.model_parameters[2][7]
+                dfh['z1'] = dfh.zshift/dfh['r'] 
+                dfh['z2'] = dfh.zshift/dfh['d']
+                dfh['z3'] = np.log1p(np.absolute(dfh.zshift/dfh.r))*np.sign(dfh.zshift)
+    
+                            # parameter space
+                dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
+                dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
+        
+                dfh['sina1'] = np.sin(dfh['a1'])
+                dfh['cosa1'] = np.cos(dfh['a1'])
+        
+                ss = StandardScaler()
+        
+                dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
+                dfs = np.multiply(dfs, self.model_parameters[1])
+
+                self.clusters = DBSCAN(eps=DBSCAN_EPS + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+
+                if ii == -STEPS:
+                    dfh['s1'] = self.clusters
+                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+                else:
+                    dfh['s2'] = self.clusters
+                    dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
+                    maxs1 = dfh['s1'].max()
+                    cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
+                    s1 = dfh['s1'].values
+                    s1[cond] = dfh['s2'].values[cond]+maxs1
+                    dfh['s1'] = s1
+                    dfh['s1'] = dfh['s1'].astype('int64')
+                    dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+
+            labels_loop8 = np.copy(dfh['s1'].values)
+            df = pd.DataFrame(labels_loop8)
+            df.to_csv(label_file8, index=False, header=['label'])
+ 
+        return (labels_loop1, labels_loop2, labels_loop3, labels_loop4, labels_loop5, labels_loop6, labels_loop7, labels_loop8)
 
     def predict(self, hits, label_file_root): 
-        (l1, l2, l3, l4)  = self._dbscan(hits, label_file_root)
+        (l1, l2, l3, l4, l5, l6, l7, l8)  = self._dbscan(hits, label_file_root)
 
-        return (l1, l2, l3, l4)
+        return (l1, l2, l3, l4, l5, l6, l7, l8)
 
 def create_one_event_submission(event_id, hits, labels):
     sub_data = np.column_stack(([event_id]*len(hits), hits.hit_id.values, labels))
@@ -324,13 +543,18 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
         hits_to_predict = hits_to_predict.drop(hits_to_predict.index[drop_indices])
 
     # Run predictions on the input model
-    (l1, l2, l3, l4) = model.predict(hits_to_predict, label_file_root)
+    (l1, l2, l3, l4, l5, l6, l7, l8) = model.predict(hits_to_predict, label_file_root)
 
     # Make sure max track ID is not larger than length of labels list.
     l1 = sd.renumber_labels(l1)
     l2 = sd.renumber_labels(l2)
     l3 = sd.renumber_labels(l3)
     l4 = sd.renumber_labels(l4)
+    l5 = sd.renumber_labels(l5)
+    l6 = sd.renumber_labels(l6)
+    l7 = sd.renumber_labels(l7)
+    l8 = sd.renumber_labels(l8)
+    
 
     # If only predicting on unmatched hits, add any new predicted tracks directly
     # into the output labels. Otherwise, just return the newly predicted output labels.
@@ -339,23 +563,53 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
         l1[l1 == 0] = 0 - len(all_labels) - 1
         l1 = l1 + len(all_labels) + 1
         l1a[l1a == 0] = l1
+        
         l2a = np.copy(all_labels)
         l2[l2 == 0] = 0 - len(all_labels) - 1
         l2 = l2 + len(all_labels) + 1
         l2a[l2a == 0] = l2
+        
         l3a = np.copy(all_labels)
         l3[l3 == 0] = 0 - len(all_labels) - 1
         l3 = l3 + len(all_labels) + 1
         l3a[l3a == 0] = l3
+        
         l4a = np.copy(all_labels)
         l4[l4 == 0] = 0 - len(all_labels) - 1
         l4 = l4 + len(all_labels) + 1
         l4a[l4a == 0] = l4
+        
+        l5a = np.copy(all_labels)
+        l5[l5 == 0] = 0 - len(all_labels) - 1
+        l5 = l5 + len(all_labels) + 1
+        l5a[l5a == 0] = l5
+        
+        l6a = np.copy(all_labels)
+        l6[l6 == 0] = 0 - len(all_labels) - 1
+        l6 = l6 + len(all_labels) + 1
+        l6a[l6a == 0] = l6
+        
+        l7a = np.copy(all_labels)
+        l7[l7 == 0] = 0 - len(all_labels) - 1
+        l7 = l7 + len(all_labels) + 1
+        l7a[l7a == 0] = l7
+
+        l8a = np.copy(all_labels)
+        l8[l8 == 0] = 0 - len(all_labels) - 1
+        l8 = l8 + len(all_labels) + 1
+        l8a[l8a == 0] = l8
+
+        
     else:
         l1a = l1
         l2a = l2
         l3a = l3
         l4a = l4
+        l5a = l5
+        l6a = l6
+        l7a = l7
+        l8a = l8
+        
 
     one_submission = create_one_event_submission(event_id, all_hits, l1a)
     score = score_event(truth, one_submission)
@@ -369,6 +623,19 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
     one_submission = create_one_event_submission(event_id, all_hits, l4a)
     score = score_event(truth, one_submission)
     print("Unfiltered dbscan loop 4 score for event %d: %.8f" % (event_id, score))
+    one_submission = create_one_event_submission(event_id, all_hits, l5a)
+    score = score_event(truth, one_submission)
+    print("Unfiltered dbscan loop 5 score for event %d: %.8f" % (event_id, score))
+    one_submission = create_one_event_submission(event_id, all_hits, l6a)
+    score = score_event(truth, one_submission)
+    print("Unfiltered dbscan loop 6 score for event %d: %.8f" % (event_id, score))
+    one_submission = create_one_event_submission(event_id, all_hits, l7a)
+    score = score_event(truth, one_submission)
+    print("Unfiltered dbscan loop 7 score for event %d: %.8f" % (event_id, score))
+    one_submission = create_one_event_submission(event_id, all_hits, l8a)
+    score = score_event(truth, one_submission)
+    print("Unfiltered dbscan loop 8 score for event %d: %.8f" % (event_id, score))
+    
 
     # If desired, extend tracks
     if track_extension:
@@ -378,11 +645,22 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
             l2a = extend_labels(i, l2a, all_hits, do_swap=i%2==1, limit=(limit))
             l3a = extend_labels(i, l3a, all_hits, do_swap=i%2==1, limit=(limit))
             l4a = extend_labels(i, l4a, all_hits, do_swap=i%2==1, limit=(limit))
+            l5a = extend_labels(i, l5a, all_hits, do_swap=i%2==1, limit=(limit))
+            l6a = extend_labels(i, l6a, all_hits, do_swap=i%2==1, limit=(limit))
+            l7a = extend_labels(i, l7a, all_hits, do_swap=i%2==1, limit=(limit))
+            l8a = extend_labels(i, l8a, all_hits, do_swap=i%2==1, limit=(limit))
+            
     
         l1a = sd.renumber_labels(l1a)
         l2a = sd.renumber_labels(l2a)
         l3a = sd.renumber_labels(l3a)
         l4a = sd.renumber_labels(l4a)
+        l5a = sd.renumber_labels(l5a)
+        l6a = sd.renumber_labels(l6a)
+        l7a = sd.renumber_labels(l7a)
+        l8a = sd.renumber_labels(l8a)
+        
+        
         one_submission = create_one_event_submission(event_id, all_hits, l1a)
         score = score_event(truth, one_submission)
         print("Unfiltered extended dbscan loop 1 score for event %d: %.8f" % (event_id, score))
@@ -395,12 +673,29 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
         one_submission = create_one_event_submission(event_id, all_hits, l4a)
         score = score_event(truth, one_submission)
         print("Unfiltered extended dbscan loop 4 score for event %d: %.8f" % (event_id, score))
+        one_submission = create_one_event_submission(event_id, all_hits, l5a)
+        score = score_event(truth, one_submission)
+        print("Unfiltered extended dbscan loop 5 score for event %d: %.8f" % (event_id, score))
+        one_submission = create_one_event_submission(event_id, all_hits, l6a)
+        score = score_event(truth, one_submission)
+        print("Unfiltered extended dbscan loop 6 score for event %d: %.8f" % (event_id, score))
+        one_submission = create_one_event_submission(event_id, all_hits, l7a)
+        score = score_event(truth, one_submission)
+        print("Unfiltered extended dbscan loop 7 score for event %d: %.8f" % (event_id, score))
+        one_submission = create_one_event_submission(event_id, all_hits, l8a)
+        score = score_event(truth, one_submission)
+        print("Unfiltered extended dbscan loop 8 score for event %d: %.8f" % (event_id, score))
+        
+        
     else:
         l1a = sd.renumber_labels(l1a)
         l2a = sd.renumber_labels(l2a)
         l3a = sd.renumber_labels(l3a)
         l4a = sd.renumber_labels(l4a)
-
+        l5a = sd.renumber_labels(l5a)
+        l6a = sd.renumber_labels(l6a)
+        l7a = sd.renumber_labels(l7a)
+        l8a = sd.renumber_labels(l8a)
 
     if filter_hits:
         # Filter out any tracks that do not originate from volumes 7, 8, or 9.
@@ -415,6 +710,16 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
         l3a = sd.renumber_labels(l3a)
         l4a = sd.filter_invalid_tracks(l4a, all_hits, my_volumes, seed_length)
         l4a = sd.renumber_labels(l4a)
+        l5a = sd.filter_invalid_tracks(l5a, all_hits, my_volumes, seed_length)
+        l5a = sd.renumber_labels(l5a)
+        l6a = sd.filter_invalid_tracks(l6a, all_hits, my_volumes, seed_length)
+        l6a = sd.renumber_labels(l6a)
+        l7a = sd.filter_invalid_tracks(l7a, all_hits, my_volumes, seed_length)
+        l7a = sd.renumber_labels(l7a)
+        l8a = sd.filter_invalid_tracks(l8a, all_hits, my_volumes, seed_length)
+        l8a = sd.renumber_labels(l8a)
+        
+
 
         one_submission = create_one_event_submission(event_id, all_hits, l1a)
         score = score_event(truth, one_submission)
@@ -428,12 +733,29 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
         one_submission = create_one_event_submission(event_id, all_hits, l4a)
         score = score_event(truth, one_submission)
         print("Filtered dbscan loop 4 score for event %d: %.8f" % (event_id, score))
+        one_submission = create_one_event_submission(event_id, all_hits, l5a)
+        score = score_event(truth, one_submission)
+        print("Filtered dbscan loop 5 score for event %d: %.8f" % (event_id, score))
+        one_submission = create_one_event_submission(event_id, all_hits, l6a)
+        score = score_event(truth, one_submission)
+        print("Filtered dbscan loop 6 score for event %d: %.8f" % (event_id, score))
+        one_submission = create_one_event_submission(event_id, all_hits, l7a)
+        score = score_event(truth, one_submission)
+        print("Filtered dbscan loop 7 score for event %d: %.8f" % (event_id, score))
+        one_submission = create_one_event_submission(event_id, all_hits, l8a)
+        score = score_event(truth, one_submission)
+        print("Filtered dbscan loop 8 score for event %d: %.8f" % (event_id, score))
 
         # Perform sophisticated outlier removal, duplicate-z removal, slope-based removal
         l1a = merge.remove_outliers(l1a, all_hits, print_counts=False)
         l2a = merge.remove_outliers(l2a, all_hits, print_counts=False)
         l3a = merge.remove_outliers(l3a, all_hits, print_counts=False)
         l4a = merge.remove_outliers(l4a, all_hits, print_counts=False)
+        l5a = merge.remove_outliers(l5a, all_hits, print_counts=False)
+        l6a = merge.remove_outliers(l6a, all_hits, print_counts=False)
+        l7a = merge.remove_outliers(l7a, all_hits, print_counts=False)
+        l8a = merge.remove_outliers(l8a, all_hits, print_counts=False)
+        
 
         one_submission = create_one_event_submission(event_id, all_hits, l1a)
         score = score_event(truth, one_submission)
@@ -447,6 +769,19 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
         one_submission = create_one_event_submission(event_id, all_hits, l4a)
         score = score_event(truth, one_submission)
         print("Filtered non-outlier dbscan loop 4 score for event %d: %.8f" % (event_id, score))
+        one_submission = create_one_event_submission(event_id, all_hits, l5a)
+        score = score_event(truth, one_submission)
+        print("Filtered non-outlier dbscan loop 5 score for event %d: %.8f" % (event_id, score))
+        one_submission = create_one_event_submission(event_id, all_hits, l6a)
+        score = score_event(truth, one_submission)
+        print("Filtered non-outlier dbscan loop 6 score for event %d: %.8f" % (event_id, score))
+        one_submission = create_one_event_submission(event_id, all_hits, l7a)
+        score = score_event(truth, one_submission)
+        print("Filtered non-outlier dbscan loop 7 score for event %d: %.8f" % (event_id, score))
+        one_submission = create_one_event_submission(event_id, all_hits, l8a)
+        score = score_event(truth, one_submission)
+        print("Filtered non-outlier dbscan loop 8 score for event %d: %.8f" % (event_id, score))
+        
 
     # Merge all dbscan loop labels together
     labels_merged = merge.heuristic_merge_tracks(l1a, l2a, print_summary=False)
@@ -461,6 +796,24 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
     one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
     score = score_event(truth, one_submission)
     print("Merged loop 1&2&3&4 score for event %d: %.8f" % (event_id, score))
+    labels_merged = merge.heuristic_merge_tracks(labels_merged, l5a, print_summary=False)
+    one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
+    score = score_event(truth, one_submission)
+    print("Merged loop 1&2&3&4&5 score for event %d: %.8f" % (event_id, score))
+    labels_merged = merge.heuristic_merge_tracks(labels_merged, l6a, print_summary=False)
+    one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
+    score = score_event(truth, one_submission)
+    print("Merged loop 1&2&3&4&5&6 score for event %d: %.8f" % (event_id, score))
+    labels_merged = merge.heuristic_merge_tracks(labels_merged, l7a, print_summary=False)
+    one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
+    score = score_event(truth, one_submission)
+    print("Merged loop 1&2&3&4&5&6&7 score for event %d: %.8f" % (event_id, score))
+    labels_merged = merge.heuristic_merge_tracks(labels_merged, l8a, print_summary=False)
+    one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
+    score = score_event(truth, one_submission)
+    print("Merged loop 1&2&3&4&5&6&7&8 score for event %d: %.8f" % (event_id, score))
+    
+    
 
     return (labels_merged)
 
@@ -472,11 +825,9 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
     if os.path.exists(label_file):
         print(str(event_id) + ': load ' + label_file)
         labels = pd.read_csv(label_file).label.values
-        ##FIXME
         one_submission = create_one_event_submission(event_id, hits, labels)
         score = score_event(truth, one_submission)
         print("Loaded score for event %d: %.8f" % (event_id, score))
-        ##FIXME
         return labels
 
     print(str(event_id) + ': clustering on ' + label_identifier)
@@ -545,92 +896,28 @@ def print_info(helix_id, model_parameters):
 def predict_event(event_id, hits, train_or_test, truth):
     
     #DBSCAN_EPS_MATRIX = [0.0033, 0.0041, 0.0037, 0.0045]
-    #Z_SHIFT_MATRIX_BASE = [2, 2, 2, 2]
-    #based on hits count = 10, event 1003
-    #Z_SHIFT_MATRIX_1 = [5, 6, -6, -9]
-    #based on hits count = 12
-    #Z_SHIFT_MATRIX_1 = [3, 4, 10, -3]
-
-    #hit_count = 11 
 
     #The strongest model is  [3, 4, 10, -3]
     model_parameters = []
     model_parameters.append(FEATURE_MATRIX)
     model_parameters.append(SCALED_DISTANCE)
-    model_parameters.append(DBSCAN_EPS_MATRIX_BASE)        
-    model_parameters.append([3, 4, 10, -3])  
+    model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6])  
     print_info(1, model_parameters)      
     labels_helix1 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix1', model_parameters)
     
+
     model_parameters.clear()
-    model_parameters.append(FEATURE_MATRIX)
-    model_parameters.append(SCALED_DISTANCE)
-    model_parameters.append(DBSCAN_EPS_MATRIX_BASE)     
-    model_parameters.append([2, 2, 2, 2])   
+    model_parameters.append(FEATURE_MATRIX_2)
+    model_parameters.append(SCALED_DISTANCE_2)
+    model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6])  
     print_info(2, model_parameters)      
     labels_helix2 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix2', model_parameters)
 
-    model_parameters.clear()
-    model_parameters.append(FEATURE_MATRIX)
-    model_parameters.append(SCALED_DISTANCE)
-    model_parameters.append(DBSCAN_EPS_MATRIX_BASE)     
-    model_parameters.append([5, 6, 7, 10])   
-    print_info(3, model_parameters)      
-    labels_helix3 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix3', model_parameters)
-
-    model_parameters.clear()
-    model_parameters.append(FEATURE_MATRIX)
-    model_parameters.append(SCALED_DISTANCE)
-    model_parameters.append(DBSCAN_EPS_MATRIX_BASE)     
-    model_parameters.append([-5, -6, -9, 13])   
-    print_info(4, model_parameters)      
-    labels_helix4 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix4', model_parameters)
-
-
-    model_parameters.clear()
-    model_parameters.append(FEATURE_MATRIX_2)
-    model_parameters.append(SCALED_DISTANCE_2)
-    model_parameters.append(DBSCAN_EPS_MATRIX_BASE)  
-    model_parameters.append([3, 4, 10, -3]) 
-    print_info(5, model_parameters)      
-    labels_helix5 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix5', model_parameters)
-
     
-    model_parameters.clear()
-    model_parameters.append(FEATURE_MATRIX_2)
-    model_parameters.append(SCALED_DISTANCE_2)
-    model_parameters.append(DBSCAN_EPS_MATRIX_BASE)  
-    model_parameters.append([2, 2, 2, 2])   
-    print_info(6, model_parameters)      
-    labels_helix6 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix6', model_parameters)
-
-    model_parameters.clear()
-    model_parameters.append(FEATURE_MATRIX_2)
-    model_parameters.append(SCALED_DISTANCE_2)
-    model_parameters.append(DBSCAN_EPS_MATRIX_BASE)  
-    model_parameters.append([5, 6, 7, 10])   
-    print_info(7, model_parameters)      
-    labels_helix7 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix7', model_parameters)
-
-    model_parameters.clear()
-    model_parameters.append(FEATURE_MATRIX_2)
-    model_parameters.append(SCALED_DISTANCE_2)
-    model_parameters.append(DBSCAN_EPS_MATRIX_BASE)     
-    model_parameters.append([-5, -6, -9, 13])   
-    print_info(8, model_parameters)      
-    labels_helix8 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix8', model_parameters)
-
 
     # Merge results from two sets of predictions, removing outliers first
     labels_helix1 = merge.remove_outliers(labels_helix1, hits, print_counts=False)
     labels_helix2 = merge.remove_outliers(labels_helix2, hits, print_counts=False)
-    labels_helix3 = merge.remove_outliers(labels_helix3, hits, print_counts=False)
-    labels_helix4 = merge.remove_outliers(labels_helix4, hits, print_counts=False)
-    labels_helix5 = merge.remove_outliers(labels_helix5, hits, print_counts=False)
-    labels_helix6 = merge.remove_outliers(labels_helix6, hits, print_counts=False)
-    labels_helix7 = merge.remove_outliers(labels_helix7, hits, print_counts=False)
-    labels_helix8 = merge.remove_outliers(labels_helix8, hits, print_counts=False)
-    
 
     if truth is not None:
         one_submission = create_one_event_submission(event_id, hits, labels_helix1)
@@ -641,80 +928,13 @@ def predict_event(event_id, hits, train_or_test, truth):
         score = score_event(truth, one_submission)
         print("After outlier removal helix2 %d: %.8f" % (event_id, score))
 
-        one_submission = create_one_event_submission(event_id, hits, labels_helix3)
-        score = score_event(truth, one_submission)
-        print("After outlier removal helix3 %d: %.8f" % (event_id, score))
-
-        one_submission = create_one_event_submission(event_id, hits, labels_helix4)
-        score = score_event(truth, one_submission)
-        print("After outlier removal helix4 %d: %.8f" % (event_id, score))
-
-        one_submission = create_one_event_submission(event_id, hits, labels_helix5)
-        score = score_event(truth, one_submission)
-        print("After outlier removal helix5 %d: %.8f" % (event_id, score))
         
-        one_submission = create_one_event_submission(event_id, hits, labels_helix6)
-        score = score_event(truth, one_submission)
-        print("After outlier removal helix6 %d: %.8f" % (event_id, score))
-
-        one_submission = create_one_event_submission(event_id, hits, labels_helix7)
-        score = score_event(truth, one_submission)
-        print("After outlier removal helix7 %d: %.8f" % (event_id, score))
-
-        one_submission = create_one_event_submission(event_id, hits, labels_helix8)
-        score = score_event(truth, one_submission)
-        print("After outlier removal helix8 %d: %.8f" % (event_id, score))
-        
-        
-
     labels = merge.heuristic_merge_tracks(labels_helix1, labels_helix2, print_summary=False)
     if truth is not None:
         one_submission = create_one_event_submission(event_id, hits, labels)
         score = score_event(truth, one_submission)
         print("Merged helix1&2 unrolling for event %d: %.8f" % (event_id, score))
 
-    labels = merge.heuristic_merge_tracks(labels, labels_helix3, print_summary=False)
-    if truth is not None:
-        one_submission = create_one_event_submission(event_id, hits, labels)
-        score = score_event(truth, one_submission)
-        print("Merged helix1&2&3 unrolling for event %d: %.8f" % (event_id, score))
-
-    labels = merge.heuristic_merge_tracks(labels, labels_helix4, print_summary=False)
-    if truth is not None:
-        one_submission = create_one_event_submission(event_id, hits, labels)
-        score = score_event(truth, one_submission)
-        print("Merged helix1&2&3&4 unrolling for event %d: %.8f" % (event_id, score))
-        
-    labels_2 = merge.heuristic_merge_tracks(labels_helix5, labels_helix6, print_summary=False)
-    if truth is not None:
-        one_submission = create_one_event_submission(event_id, hits, labels_2)
-        score = score_event(truth, one_submission)
-        print("Merged helix5&6 unrolling for event %d: %.8f" % (event_id, score))
-        
-    labels_2 = merge.heuristic_merge_tracks(labels_2, labels_helix7, print_summary=False)
-    if truth is not None:
-        one_submission = create_one_event_submission(event_id, hits, labels_2)
-        score = score_event(truth, one_submission)
-        print("Merged helix5&6&7 unrolling for event %d: %.8f" % (event_id, score))
-
-    labels_2 = merge.heuristic_merge_tracks(labels_2, labels_helix8, print_summary=False)
-    if truth is not None:
-        one_submission = create_one_event_submission(event_id, hits, labels_2)
-        score = score_event(truth, one_submission)
-        print("Merged helix5&6&7&8 unrolling for event %d: %.8f" % (event_id, score))
-
-
-    labels = merge.heuristic_merge_tracks(labels, labels_2, print_summary=False)
-    if truth is not None:
-        one_submission = create_one_event_submission(event_id, hits, labels)
-        score = score_event(truth, one_submission)
-        print("Merged helix 1-4 and 5-8 unrolling for event %d: %.8f" % (event_id, score))
-
-
-    # labels = merge.heuristic_merge_tracks(labels, labels_cone, print_summary=False)
-    # one_submission = create_one_event_submission(event_id, hits, labels)
-    # score = score_event(truth, one_submission)
-    # print("Merged All unrolling and cone slicing for event %d: %.8f" % (event_id, score))
 
     return labels
 
