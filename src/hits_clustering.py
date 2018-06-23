@@ -552,11 +552,13 @@ def predict_event(event_id, hits, train_or_test, truth):
     #Z_SHIFT_MATRIX_1 = [3, 4, 10, -3]
 
     #hit_count = 11 
+
+    #The strongest model is  [3, 4, 10, -3]
     model_parameters = []
     model_parameters.append(FEATURE_MATRIX)
     model_parameters.append(SCALED_DISTANCE)
     model_parameters.append(DBSCAN_EPS_MATRIX_BASE)        
-    model_parameters.append([0,1, 2, 3])  
+    model_parameters.append([3, 4, 10, -3])  
     print_info(1, model_parameters)      
     labels_helix1 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix1', model_parameters)
     
@@ -564,7 +566,7 @@ def predict_event(event_id, hits, train_or_test, truth):
     model_parameters.append(FEATURE_MATRIX)
     model_parameters.append(SCALED_DISTANCE)
     model_parameters.append(DBSCAN_EPS_MATRIX_BASE)     
-    model_parameters.append([-1, -2, -3, -4])   
+    model_parameters.append([2, 2, 2, 2])   
     print_info(2, model_parameters)      
     labels_helix2 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix2', model_parameters)
 
@@ -589,7 +591,7 @@ def predict_event(event_id, hits, train_or_test, truth):
     model_parameters.append(FEATURE_MATRIX_2)
     model_parameters.append(SCALED_DISTANCE_2)
     model_parameters.append(DBSCAN_EPS_MATRIX_BASE)  
-    model_parameters.append([0, 1, 2, 3]) 
+    model_parameters.append([3, 4, 10, -3]) 
     print_info(5, model_parameters)      
     labels_helix5 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix5', model_parameters)
 
@@ -598,7 +600,7 @@ def predict_event(event_id, hits, train_or_test, truth):
     model_parameters.append(FEATURE_MATRIX_2)
     model_parameters.append(SCALED_DISTANCE_2)
     model_parameters.append(DBSCAN_EPS_MATRIX_BASE)  
-    model_parameters.append([-1, -2, -3, -4])   
+    model_parameters.append([2, 2, 2, 2])   
     print_info(6, model_parameters)      
     labels_helix6 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix6', model_parameters)
 
