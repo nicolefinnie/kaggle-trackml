@@ -150,7 +150,7 @@ def create_one_event_submission(event_id, hits, labels):
     submission = pd.DataFrame(data=sub_data, columns=["event_id", "hit_id", "track_id"]).astype(int)
     return submission
 
-def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_root, unmatched_only=True, filter_hits=True, track_extension_limits=None):
+def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_root, unmatched_only=True, filter_hits=True, track_extension_limits=None, merge_overwrite_limit=4):
     """ Run a round of predictions on all or a subset of remaining hits.
     Parameters:
       all_labels: Input np array of labeled tracks, where the index in all_labels matches
@@ -240,7 +240,7 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
         if i == 0:
             labels_merged = labels_full[0]
         else:
-            labels_merged = merge.heuristic_merge_tracks(labels_merged, labels_full[i], print_summary=False)
+            labels_merged = merge.heuristic_merge_tracks(labels_merged, labels_full[i], overwrite_limit=merge_overwrite_limit, print_summary=False)
             if truth is not None:
                 one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
                 score = score_event(truth, one_submission)
@@ -278,7 +278,7 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
 
     label_file_root2 = label_file_root + '_phase2'
     model = Clusterer(model_parameters)
-    (labels) = run_predictions(event_id, labels, hits, truth, model, label_file_root2, unmatched_only=True, filter_hits=False, track_extension_limits=EXTENSION_LIGHT_LIMITS)
+    (labels) = run_predictions(event_id, labels, hits, truth, model, label_file_root2, unmatched_only=True, filter_hits=False, track_extension_limits=EXTENSION_LIGHT_LIMITS, merge_overwrite_limit=2)
 
     if truth is not None:
         # Score for the event

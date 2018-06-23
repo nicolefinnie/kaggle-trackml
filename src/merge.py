@@ -75,7 +75,7 @@ def merge_tracks(labels1, labels2):
     labels_merged = renumber_labels(labels_merged)
     return labels_merged
 
-def heuristic_merge_tracks(labels1, labels2, print_summary=True):
+def heuristic_merge_tracks(labels1, labels2, overwrite_limit=4, print_summary=True):
     """ Merge tracks from two arrays of track labels.
 
     Merges are handled as follows:
@@ -166,9 +166,9 @@ def heuristic_merge_tracks(labels1, labels2, print_summary=True):
                 # those matching the labels2 track to the most common
                 # original track ID.
                 for trk1_count in trk1_counts:
-                    if trk1_count[1] <= 4:
+                    if trk1_count[1] <= overwrite_limit:
                         trk1_count_ix = np.where(labels_merged == trk1_count[0])[0]
-                        if len(trk1_count_ix) <= 4:
+                        if len(trk1_count_ix) <= overwrite_limit:
                             for label_ix in trk2_ix:
                                 if labels_merged[label_ix] == trk1_count[0]:
                                     labels_merged[label_ix] = longest_track_id
