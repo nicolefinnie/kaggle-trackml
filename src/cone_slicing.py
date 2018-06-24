@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 from sklearn.neighbors import KDTree
 from sklearn.preprocessing import StandardScaler
@@ -17,20 +18,48 @@ class DBScanClusterer(object):
 
     def _preprocess(self, hits):
         ss = StandardScaler()
-        #tmp_scaled = [0.15, 0.15, 0.1, 0.1, 0.1]
-        #X = ss.fit_transform(hits[['sina1','cosa1','z1','x1','x2']].values)
         tmp_scaled = [0.13, 0.13, 0.05, 0.05]
         X = ss.fit_transform(hits[['sina1','cosa1','z1', 'z2']].values)
+        #tmp_scaled = [1,       1,       0.5, 0.125, 0.01, 0.01]#, 0.001, 0.001]
+        #tmp_scaled = [0.13, 0.13, 0.05, 0.0125, 0.001, 0.001]#, 0.001, 0.001]
+        #X = ss.fit_transform(hits[['sina1', 'cosa1', 'z1', 'z2',  'xd', 'yd']].values)#, 'px', 'py']].values)
         
-        #X = np.multiply(X, SCALED_DISTANCE)
         X = np.multiply(X, tmp_scaled)
 
         return X
     
-    def predict(self, hits):
-        X = self._preprocess(hits)
-        labels = DBSCAN(eps=0.0075,min_samples=1,algorithm='kd_tree', n_jobs=-1).fit(X).labels_
-        
+    def predict(self, dfh, zshifts):
+        #X = self._preprocess(hits)
+
+        rr = dfh['r']/1000
+        STEPS=25
+        STEPRR = 0.03
+        dfh['a0'] = np.arctan2(dfh.y,dfh.x)
+        for ii in np.arange(-STEPS, STEPS, 1):
+            dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
+            dfh['sina1'] = np.sin(dfh['a1'])
+            dfh['cosa1'] = np.cos(dfh['a1'])
+
+            ss = StandardScaler()
+            tmp_scaled = [0.13, 0.13, 0.05, 0.05]
+            X = ss.fit_transform(dfh[['sina1','cosa1','z1', 'z2']].values)
+            X = np.multiply(X, tmp_scaled)
+            labels = DBSCAN(eps=0.0075,min_samples=1,algorithm='kd_tree', n_jobs=-1).fit(X).labels_
+            if ii == -STEPS:
+                dfh['s1'] = labels
+                dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+            else:
+                dfh['s2'] = labels
+                dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
+                maxs1 = dfh['s1'].max()
+                cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
+                s1 = dfh['s1'].values
+                s1[cond] = dfh['s2'].values[cond]+maxs1
+                dfh['s1'] = s1
+                dfh['s1'] = dfh['s1'].astype('int64')
+                dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+        labels = np.copy(dfh['s1'].values)
+
         return labels
 
 def do_one_slice(df, labels, min_track_length, max_track_length, angle, delta_angle):
@@ -44,7 +73,8 @@ def do_one_slice(df, labels, min_track_length, max_track_length, angle, delta_an
     df1_indices = df1.index.values
 
     model = DBScanClusterer()
-    tracks = model.predict(df1.copy(deep=True))
+    zshifts = [3, -6, 4, 12, -9, 10, -3, 6]
+    tracks = model.predict(df1.copy(deep=True), zshifts)
 
     x,y,z = df1.as_matrix(columns=['x', 'y', 'z']).T
     r  = (x**2 + y**2)**0.5
@@ -64,10 +94,11 @@ def do_one_slice(df, labels, min_track_length, max_track_length, angle, delta_an
         if p==0: continue
 
         idx = np.where(tracks==p)[0]
-        if len(idx)<min_track_length:
+        new_track_len = len(idx)
+        if new_track_len<min_track_length:
             tracks[tracks == p] = 0
             continue
-        if len(idx)>max_track_length:
+        if new_track_len>max_track_length:
             tracks[tracks == p] = 0
             continue
 
@@ -165,14 +196,16 @@ def slice_cones(hits, min_track_length, max_track_length, do_swap=False, delta_a
     df = df.assign(x2 = 1 / df.z1)
     df = df.assign(sina1 = np.sin(df.a1))
     df = df.assign(cosa1 = np.cos(df.a1))
+    df = df.assign(xd = df.x/df.d)
+    df = df.assign(yd = df.y/df.d)
 
     uniq_list = np.unique(df.arctan2.values)
     #print('uniq arctan head: ' + str(uniq_list[0:5]) + ', tail: ' + str(uniq_list[-5:]))
-    for angle in range(-180,180,1):
+    for angle in tqdm(range(-180,180,1)):
         df1 = df.loc[(df.arctan2>(angle - delta_angle)/180*np.pi) & (df.arctan2<(angle + delta_angle)/180*np.pi)]
         num_hits = len(df1)
         # Dynamically adjust the delta based on how many hits are found
-        if num_hits > 1000:
+        if num_hits > 2000:
             labels = do_one_slice(df, labels, min_track_length, max_track_length, angle-0.6, 0.4)
             labels = do_one_slice(df, labels, min_track_length, max_track_length, angle-0.2, 0.4)
             labels = do_one_slice(df, labels, min_track_length, max_track_length, angle+0.2, 0.4)
