@@ -34,7 +34,7 @@ STEPRR = 0.03
 
 STEPEPS = 0.0000015
 STEPS = 120
-EXTENSION_STANDARD_LIMITS = [0.025, 0.035, 0.085, 0.095]
+EXTENSION_STANDARD_LIMITS = [0.02, 0.04, 0.06, 0.08, 0.10]
 EXTENSION_LIGHT_LIMITS = [0.03, 0.07]
 
 DBSCAN_EPS = 0.0033
@@ -55,14 +55,6 @@ class Clusterer(object):
         self.model_parameters = model_parameters
 
     def _dbscan(self, dfh, label_file_root):
-        label_file1 = label_file_root + '_dbscan1.csv'
-        label_file2 = label_file_root + '_dbscan2.csv'
-        label_file3 = label_file_root + '_dbscan3.csv'
-        label_file4 = label_file_root + '_dbscan4.csv'
-        label_file5 = label_file_root + '_dbscan5.csv'
-        label_file6 = label_file_root + '_dbscan6.csv'
-        label_file7 = label_file_root + '_dbscan7.csv'
-        label_file8 = label_file_root + '_dbscan8.csv'
         labels = []
 
         dfh['d'] = np.sqrt(dfh.x**2+dfh.y**2+dfh.z**2)
@@ -188,52 +180,65 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
 
     # Make sure max track ID is not larger than length of labels list.
     for i in range(len(labels_subset)):
-        labels_subset[i] = merge.renumber_labels(labels_subset[i])
-
-        # If only predicting on unmatched hits, add any new predicted tracks directly
-        # into the output labels. Otherwise, just return the newly predicted output labels.
-        if unmatched_only:
-            labels_full.append(np.copy(all_labels))
-            labels_subset[i][labels_subset[i] == 0] = 0 - len(all_labels) - 1
-            labels_subset[i] = labels_subset[i] + len(all_labels) + 1
-            labels_full[i][labels_full[i] == 0] = labels_subset[i]
+        label_file = label_file_root + '_dbscan' + str(i+1) + '_processed.csv'
+        if os.path.exists(label_file):
+            print('Loading dbscan loop ' + str(i+1) + ' processed file: ' + label_file)
+            labels_full.append(pd.read_csv(label_file).label.values)
+            if truth is not None:
+                one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
+                score = score_event(truth, one_submission)
+                print("Processed dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
         else:
-            labels_full.append(np.copy(labels_subset[i]))
+            labels_subset[i] = merge.renumber_labels(labels_subset[i])
 
-        if truth is not None:
-            one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
-            score = score_event(truth, one_submission)
-            print("Unfiltered dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
+            # If only predicting on unmatched hits, add any new predicted tracks directly
+            # into the output labels. Otherwise, just return the newly predicted output labels.
+            if unmatched_only:
+                labels_full.append(np.copy(all_labels))
+                labels_subset[i][labels_subset[i] == 0] = 0 - len(all_labels) - 1
+                labels_subset[i] = labels_subset[i] + len(all_labels) + 1
+                labels_full[i][labels_full[i] == 0] = labels_subset[i]
+            else:
+                labels_full.append(np.copy(labels_subset[i]))
 
-        # If desired, extend tracks
-        if track_extension_limits is not None:
-            for ix, limit in enumerate(track_extension_limits):
-                labels_full[i] = extend_labels(ix, labels_full[i], all_hits, do_swap=False, limit=(limit))
-                if False and truth is not None:
+            if truth is not None:
+                one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
+                score = score_event(truth, one_submission)
+                print("Unfiltered dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
+
+            # If desired, extend tracks
+            if track_extension_limits is not None:
+                for ix, limit in enumerate(track_extension_limits):
+                    labels_full[i] = extend_labels(ix, labels_full[i], all_hits, do_swap=False, limit=(limit))
+                    if False and truth is not None:
+                        one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
+                        score = score_event(truth, one_submission)
+                        print("Extension %d loop %d score for event %d: %.8f" % (ix,i+1,event_id, score))
+                    
+                labels_full[i] = merge.renumber_labels(labels_full[i])
+                
+                if truth is not None:
                     one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
                     score = score_event(truth, one_submission)
-                    print("Extension %d loop %d score for event %d: %.8f" % (ix,i+1,event_id, score))
-                
-            labels_full[i] = merge.renumber_labels(labels_full[i])
-            
-            if truth is not None:
-                one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
-                score = score_event(truth, one_submission)
-                print("Unfiltered extended dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
-        else:
-            labels_full[i] = merge.renumber_labels(labels_full[i])
+                    print("Unfiltered extended dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
+            else:
+                labels_full[i] = merge.renumber_labels(labels_full[i])
 
-        if filter_hits:
-            # Filter out tracks that are too small, as well as hits that look
-            # like outliers, i.e. duplicate-z values, slopes that do not match
-            # other hits in the track, etc.
-            labels_full[i] = merge.remove_outliers(labels_full[i], all_hits, smallest_track_size=5, print_counts=False)
-            labels_full[i] = merge.renumber_labels(labels_full[i])
+            if filter_hits:
+                # Filter out tracks that are too small, as well as hits that look
+                # like outliers, i.e. duplicate-z values, slopes that do not match
+                # other hits in the track, etc.
+                labels_full[i] = merge.remove_outliers(labels_full[i], all_hits, smallest_track_size=5, print_counts=False)
+                labels_full[i] = merge.renumber_labels(labels_full[i])
 
-            if truth is not None:
-                one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
-                score = score_event(truth, one_submission)
-                print("Filtered non-outlier dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
+                if truth is not None:
+                    one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
+                    score = score_event(truth, one_submission)
+                    print("Filtered non-outlier dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
+
+            # Save the predicted tracks to a file so we don't need to re-calculate next time.
+            df = pd.DataFrame(labels_full[i])
+            df.to_csv(label_file, index=False, header=['label'])
 
     # Merge all dbscan loop labels together
     for i in range(len(labels_full)):
@@ -331,7 +336,7 @@ def predict_event(event_id, hits, train_or_test, truth):
     model_parameters = []
     model_parameters.append(FEATURE_MATRIX)
     model_parameters.append(SCALED_DISTANCE)
-    model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6])  
+    model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6, -10, 2, 8, -2])  
     print_info(1, model_parameters)      
     labels_helix1 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix1', model_parameters)
     
@@ -339,7 +344,7 @@ def predict_event(event_id, hits, train_or_test, truth):
     model_parameters.clear()
     model_parameters.append(FEATURE_MATRIX_2)
     model_parameters.append(SCALED_DISTANCE_2)
-    model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6])  
+    model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6, -10, 2, 8, -2])  
     print_info(2, model_parameters)      
     labels_helix2 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix2', model_parameters)
 
