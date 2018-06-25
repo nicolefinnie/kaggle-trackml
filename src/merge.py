@@ -632,13 +632,14 @@ def remove_track_outliers(track, labels, hits, aggressive):
     # Check if the sorted hits (on z-axis) go through the volumes
     # and layers in the expected order
     bad_volume_ix = find_invalid_volumes(track, labels, hits)
-    if len(bad_volume_ix) > 0:
-        #print('track ' + str(track) + ' bad volume: ' + str(bad_volume_ix))
-        found_bad_volume = found_bad_volume + len(bad_volume_ix)
-        for bvix in bad_volume_ix:
-            labels[bvix] = 0
+    if aggressive:
+        if len(bad_volume_ix) > 0:
+            #print('track ' + str(track) + ' bad volume: ' + str(bad_volume_ix))
+            found_bad_volume = found_bad_volume + len(bad_volume_ix)
+            for bvix in bad_volume_ix:
+                labels[bvix] = 0
 
-    if True:
+    if aggressive:
         # Check if the sorted hits (on z-axis) go through the volumes
         # and layers in the expected order
         duplicatez_ix = find_duplicate_z(track, labels, hits)
