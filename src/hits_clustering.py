@@ -364,7 +364,7 @@ def predict_event(event_id, hits, train_or_test, truth):
         print("After outlier removal helix2 %d: %.8f" % (event_id, score))
 
         
-    labels = merge.heuristic_merge_tracks(labels_helix1, labels_helix2, print_summary=False)
+    labels = merge.heuristic_merge_tracks(labels_helix1, labels_helix2, overwrite_limit=3, print_summary=False)
     if truth is not None:
         one_submission = create_one_event_submission(event_id, hits, labels)
         score = score_event(truth, one_submission)
