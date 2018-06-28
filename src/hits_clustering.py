@@ -22,12 +22,10 @@ import cone_slicing as cone
 import merge as merge
 
 
-#SCALED_DISTANCE = [1,       1,       0.5, 0.125, 0.01, 0.01, 0.001, 0.001]
-SCALED_DISTANCE = [1,       1,       0.5, 0.125, 0.01, 0.01, 0.004, 0.004]
+SCALED_DISTANCE = [1,       1,       0.50, 0.125, 0.008, 0.008, 0.00175, 0.00175]
 FEATURE_MATRIX = ['sina1', 'cosa1', 'z1', 'z2',  'xd', 'yd', 'px', 'py']
 
-#SCALED_DISTANCE_2 = [1,       1,       0.5, 0.01, 0.01, 0.001, 0.001]
-SCALED_DISTANCE_2 = [1,       1,       0.5, 0.01, 0.01, 0.004, 0.004]
+SCALED_DISTANCE_2 = [1,       1,       0.5, 0.008, 0.008, 0.00185, 0.00185]
 FEATURE_MATRIX_2 = ['sina1', 'cosa1', 'z3', 'xd', 'yd', 'px', 'py']
 
 
@@ -338,8 +336,7 @@ def predict_event(event_id, hits, train_or_test, truth):
     model_parameters = []
     model_parameters.append(FEATURE_MATRIX)
     model_parameters.append(SCALED_DISTANCE)
-    # model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6, -10, 2, 8, -2])
-    model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6])  
+    model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6, -10, 2, 8, -2])
     print_info(1, model_parameters)      
     labels_helix1 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix1', model_parameters)
     
@@ -347,8 +344,7 @@ def predict_event(event_id, hits, train_or_test, truth):
     model_parameters.clear()
     model_parameters.append(FEATURE_MATRIX_2)
     model_parameters.append(SCALED_DISTANCE_2)
-    # model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6, -10, 2, 8, -2])
-    model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6])  
+    model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6, -10, 2, 8, -2])
     print_info(2, model_parameters)      
     labels_helix2 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix2', model_parameters)
 
