@@ -75,7 +75,7 @@ def merge_tracks(labels1, labels2):
     labels_merged = renumber_labels(labels_merged)
     return labels_merged
 
-def heuristic_merge_tracks(labels1, labels2, overwrite_limit=4, print_summary=True):
+def heuristic_merge_tracks(labels1, labels2, overwrite_limit=4, favour_splitting=False, print_summary=True):
     """ Merge tracks from two arrays of track labels.
 
     Merges are handled as follows:
@@ -112,11 +112,13 @@ def heuristic_merge_tracks(labels1, labels2, overwrite_limit=4, print_summary=Tr
     count6 = 0
     count7 = 0
     count8 = 0
+    count9 = 0
     for trk2 in trks2:
         if trk2 == 0:
             continue
         trk2_ix = np.where(labels2 == trk2)[0]
-        if len(trk2_ix) < 2:
+        trk2_length = len(trk2_ix)
+        if trk2_length < 2:
             continue
         trk1_val = labels_merged[trk2_ix]
         #print('trk2: ' + str(trk2) + ', label1: ' + str(trk1_val))
@@ -145,6 +147,24 @@ def heuristic_merge_tracks(labels1, labels2, overwrite_limit=4, print_summary=Tr
             # Get counts for all identified tracks from labels1 that match trk2
             trk1_counts = coll.Counter(trk1_val).most_common(len(trk1_uniq))
             longest_track_id = trk1_counts[0][0]
+            longest_track_count = trk1_counts[0][1]
+            # If longest track in labels1 was 0, create a new track, but only
+            # from free hits, or from small tracks. Also, if there is not
+            # enough overlap (less than half the hits overlap), also create
+            # a new track.
+            if longest_track_id == 0:
+                count5 = count5 + 1
+                longest_track_id = trk2
+            elif (trk2_length > 20) or (longest_track_count > 20):
+                count9 = count9 + 1
+                longest_track_id = trk2
+            # The following should be good to avoid creating crossed tracks,
+            # however it reduced the merged scores... Maybe re-visit this after
+            # the outlier detection code is improved?
+            # elif (trk2_length > 8) and (longest_track_count < int(trk2_length/2)):
+            #     count10 = count10 + 1
+            #     longest_track_id = trk2
+
             for trk1 in trk1_uniq:
                 if trk1 == 0:
                     continue
@@ -190,6 +210,8 @@ def heuristic_merge_tracks(labels1, labels2, overwrite_limit=4, print_summary=Tr
     if print_summary:
         print('Simple replacement of unclassified hits: ' + str(count1))
         print('Similar tracks (no-op): ' + str(count2))
+        print('New track creations from little overlap(0): ' + str(count5))
+        print('New track creations from little overlap(non-0): ' + str(count9))
         print('Multiple non-trivial tracks: ' + str(count3))
         print('--> of which partial track ID 0 hits were updated: ' + str(count6))
         print('--> of which partial track ID non-0 hits were updated: ' + str(count7))
