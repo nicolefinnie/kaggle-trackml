@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import math
 import collections as coll
+import zroutlier as zro
 
 from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import StandardScaler
@@ -650,16 +651,25 @@ def remove_track_outliers(track, labels, hits, aggressive):
     found_bad_dimension = 0
     found_bad_slope = 0
     found_bad_z = 0
+    found_bad_zr = 0
 
     # Check if the sorted hits (on z-axis) go through the volumes
     # and layers in the expected order
-    bad_volume_ix = find_invalid_volumes(track, labels, hits)
     if aggressive:
+        bad_volume_ix = find_invalid_volumes(track, labels, hits)
         if len(bad_volume_ix) > 0:
             #print('track ' + str(track) + ' bad volume: ' + str(bad_volume_ix))
             found_bad_volume = found_bad_volume + len(bad_volume_ix)
             for bvix in bad_volume_ix:
                 labels[bvix] = 0
+
+    if True:
+        outlier_zr = zro.find_track_outliers_zr(track, labels, hits)
+        if len(outlier_zr) > 0:
+            #print('track ' + str(track) + ' zr outliers: ' + str(outlier_zr))
+            found_bad_zr = found_bad_zr + len(outlier_zr)
+            for oix in outlier_zr:
+                labels[oix] = 0
 
     if aggressive:
         # Check if the sorted hits (on z-axis) go through the volumes
@@ -699,7 +709,7 @@ def remove_track_outliers(track, labels, hits, aggressive):
             for oix in outlier_ix:
                 labels[oix] = 0
             
-    return (labels, found_bad_volume, found_bad_dimension, found_bad_z, found_bad_slope)
+    return (labels, found_bad_volume, found_bad_dimension, found_bad_z, found_bad_slope, found_bad_zr)
 
 def remove_small_tracks(labels, smallest_track_size=2):
     # Remove small tracks that provide little value, and mostly just cause noise.
@@ -717,21 +727,24 @@ def remove_outliers(labels, hits, smallest_track_size=2, aggressive=False, print
     hits['z_abs'] = hits.z.abs()
     hits['r'] = np.sqrt(hits.x**2+hits.y**2)
     hits['a0'] = np.arctan2(hits.y,hits.x)
+    hits['zr'] = hits['z'] / hits['r']
     count_rem_volume = 0
     count_rem_dimension = 0
     count_duplicatez = 0
     count_rem_slope = 0
     count_small_tracks = 0
+    count_zr = 0
     for track in tracks:
         if track == 0:
             continue
         track_hits = np.where(labels == track)[0]
         if len(track_hits) > 3:
-            (labels, c1, c2, c3, c4) = remove_track_outliers(track, labels, hits, aggressive)
+            (labels, c1, c2, c3, c4, c5) = remove_track_outliers(track, labels, hits, aggressive)
             count_rem_volume = count_rem_volume + c1
             count_rem_dimension = count_rem_dimension + c2
             count_duplicatez = count_duplicatez + c3
             count_rem_slope = count_rem_slope + c4
+            count_zr = count_zr + c5
 
     # Remove small tracks, we do not get any score for those. This is done
     # last, in case removing the outliers (above) removed enough hits
@@ -740,6 +753,7 @@ def remove_outliers(labels, hits, smallest_track_size=2, aggressive=False, print
 
     if print_counts:
         print('Total removed due to bad volumes: ' + str(count_rem_volume))
+        print('Total removed due to bad zr values: ' + str(count_zr))
         print('Total removed due to bad dimensions: ' + str(count_rem_dimension))
         print('Total removed due to duplicate zs: ' + str(count_duplicatez))
         print('Total removed due to bad slopes: ' + str(count_rem_slope))
