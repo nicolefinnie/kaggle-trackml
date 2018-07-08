@@ -88,16 +88,17 @@ def classify_zr_shape(abs_zrs, diff_zrs):
         
     return shape
 
-# TODO pi, -pi discontinuity 
 def find_track_outliers_zr(track, labels, hits, truth=None, debug=False):
-    def find_extreme_jump(diff_zrs, head_threshold=10, tail_threshold=20):
+    def find_extreme_jump(diff_zrs, head_threshold=10, tail_threshold=20, filter_mean=True):
         """The idea is to find jumps in the z/r value that are much more
         extreme than usual, by default 10-20x larger than the mean jump.
         Those extremes are classified as potential outliers."""
         rem_ix = -1
-        mean_diff_zr = diff_zrs.mean()
-        filtered_diffs = diff_zrs[np.where(diff_zrs < 4*mean_diff_zr)[0]]
-        new_mean = filtered_diffs.mean()
+        new_mean = diff_zrs.mean()
+        if filter_mean:
+            filtered_diffs = diff_zrs[np.where(diff_zrs < 4*new_mean)[0]]
+            new_mean = filtered_diffs.mean()
+
         min_removal_factor = head_threshold
         for ix, diff in enumerate(diff_zrs):
             # for curved tracks, the end of the track can have larger
@@ -115,7 +116,7 @@ def find_track_outliers_zr(track, labels, hits, truth=None, debug=False):
                 break
         return rem_ix
     
-    def find_opposing_extreme_jump(diff_zrs, head_threshold=10, tail_threshold=20, reverse_opt=False):
+    def find_opposing_extreme_jump(diff_zrs, head_threshold=10, tail_threshold=20, reverse_opt=False, favour_1st_removal=False):
         """The idea is to look for two large jumps in opposing directions, with up
         to two points in between. The first large jump is likely the incorrect one."""
         rem_ix = []
@@ -123,15 +124,20 @@ def find_track_outliers_zr(track, labels, hits, truth=None, debug=False):
 
         # First try to filter out any extreme positive or negative values to get
         # a more accurate mean. In some cases, this can filter out all values,
-        # so retry using the mean of the absolute values.
-        mean_diff_zr = diff_zrs.mean()
-        filtered_diffs = diff_zrs[np.where(abs_diff_zrs < 4*mean_diff_zr)[0]]
-        if (filtered_diffs.shape[0] == 0):
-            mean_diff_zr = abs_diff_zrs.mean()
-            filtered_diffs = abs_diff_zrs[np.where(abs_diff_zrs < 4*mean_diff_zr)[0]]
-            new_mean = filtered_diffs.mean()
+        # so retry using the mean of the absolute values. If reverse slope
+        # optimizations are enabled, just use the standard mean - the diffs
+        # are unreliable, so not meaningful to remove outliers
+        if reverse_opt:
+            new_mean = diff_zrs.mean()
         else:
-            new_mean = filtered_diffs.mean()
+            mean_diff_zr = diff_zrs.mean()
+            filtered_diffs = diff_zrs[np.where(abs_diff_zrs < 4*mean_diff_zr)[0]]
+            if (filtered_diffs.shape[0] == 0):
+                mean_diff_zr = abs_diff_zrs.mean()
+                filtered_diffs = abs_diff_zrs[np.where(abs_diff_zrs < 4*mean_diff_zr)[0]]
+                new_mean = filtered_diffs.mean()
+            else:
+                new_mean = filtered_diffs.mean()
 
         min_removal_factor = head_threshold
         first_jump_ix = -1
@@ -144,7 +150,7 @@ def find_track_outliers_zr(track, labels, hits, truth=None, debug=False):
             # values, so increase the removal threshold in the last 3rd
             if ix > int(len(diff_zrs)*0.65):
                 min_removal_factor = tail_threshold
-            if abs(diff) > min_removal_factor*new_mean*second_jump_factor:
+            if abs(diff) > abs(min_removal_factor*new_mean*second_jump_factor):
                 if first_jump_ix == -1:
                     first_jump_ix = ix
                     first_jump_val = diff
@@ -158,12 +164,14 @@ def find_track_outliers_zr(track, labels, hits, truth=None, debug=False):
             # potential outliers
             if ((first_jump_val >= 0) and (second_jump_val <= 0)) or ((first_jump_val <= 0) and (second_jump_val >= 0)):
                 abs_diff = abs(first_jump_val + second_jump_val)
-                if first_jump_ix == 0 and first_jump_val < 0 and (abs(first_jump_val) > 10*new_mean) and (abs(first_jump_val) > abs(second_jump_val)*1.2):
+                if first_jump_ix == 0 and first_jump_val < 0 and (abs(first_jump_val) > 10*abs(new_mean)) and (abs(first_jump_val) > abs(second_jump_val)*1.2):
                     rem_ix.append(0)
-                elif reverse_opt and first_jump_val < 0 and first_jump_ix == 1 and diff_zrs[0] < 0 and (abs(first_jump_val) > 10*new_mean) and diff_zrs[first_jump_ix+1] > 0:
+                elif favour_1st_removal and (abs_diff < 0.1*abs(first_jump_val)):
+                    rem_ix.append(first_jump_ix+1)
+                elif reverse_opt and first_jump_val < 0 and first_jump_ix == 1 and diff_zrs[0] < 0 and (abs(first_jump_val) > 10*abs(new_mean)) and diff_zrs[first_jump_ix+1] > 0:
                     rem_ix.append(0)
                     rem_ix.append(1)
-                elif reverse_opt and first_jump_val < 0 and first_jump_ix == 1 and diff_zrs[0] > 0 and (abs(first_jump_val) > 10*new_mean) and diff_zrs[first_jump_ix+1] > 0:
+                elif reverse_opt and first_jump_val < 0 and first_jump_ix == 1 and diff_zrs[0] > 0 and (abs(first_jump_val) > 10*abs(new_mean)) and diff_zrs[first_jump_ix+1] > 0:
                     rem_ix.append(1)
                 elif (abs(second_jump_val) < abs(first_jump_val)) or (abs_diff < 0.02*abs(first_jump_val)):
                     for i in range(first_jump_ix, second_jump_ix):
@@ -229,6 +237,65 @@ def find_track_outliers_zr(track, labels, hits, truth=None, debug=False):
 
         return rem_ix
 
+    def chop_valley_negative_tail(diff_zrs):
+        """The idea is to chop off the tail of the valley if it has the wrong sign.
+        Valleys should tend to increase at the end, so do not expect a negative slope there."""
+        rem_ix = -1
+        if diff_zrs[-1] < 0 and diff_zrs[-2] > 0:
+            count_positive = 1
+            sum_positive = diff_zrs[-2]
+            if diff_zrs[-3] > 0:
+                count_positive = count_positive+1
+                sum_positive = sum_positive + diff_zrs[-3]
+                if diff_zrs[-4] > 0:
+                    count_positive = count_positive+1
+                    sum_positive = sum_positive + diff_zrs[-4]
+            avg_positive = sum_positive / count_positive
+            if abs(diff_zrs[-1]) > avg_positive*2.5:
+                # Looks like a bad tail, chop it off
+                rem_ix = len(diff_zrs)
+        return rem_ix
+    
+    def find_simple_opposing_jump(diff_zrs, threshold=5):
+        """The idea is to look for two large jumps in opposing directions.
+        The first large jump is likely the incorrect one."""
+        rem_ix = -1
+        abs_diff_zrs = np.absolute(diff_zrs)
+        new_mean = diff_zrs.mean()
+        prev_diff = abs(new_mean)
+        for ix, diff in enumerate(diff_zrs):
+            if (abs(diff) > threshold*prev_diff) and (abs(diff) > abs(threshold*new_mean)) and (ix < len(diff_zrs)-1) and (abs(diff_zrs[ix+1]) > abs(threshold*new_mean)):
+                if ((diff > 0 and diff_zrs[ix+1] < 0) or (diff < 0 and diff_zrs[ix+1] > 0)) and (abs(diff_zrs[ix+1]) < abs(diff)) and (abs(diff_zrs[ix+1])*2 > abs(diff)):
+                    # We found our candidate for removal, we have two opposing jumps much larger than
+                    # the mean, and of roughly equivalent size, but the second jump is smaller. If
+                    # the first candidate is the first diff, choose element 0, it's safest (can
+                    # always be extended again via track extension).
+                    if ix == 0:
+                        rem_ix = ix
+                    else:
+                        rem_ix = ix+1
+                    break
+            prev_diff = abs(diff)
+
+        return rem_ix
+
+    def find_final_slope_too_large(diff_zrs, threshold=10):
+        """The idea is to find a final slope that is much larger than the previous slopes."""
+        rem_ix = -1
+        if diff_zrs[-1] > 0 and diff_zrs[-2] > 0 and diff_zrs[-3] > 0 and diff_zrs[-4] > 0:
+            if (diff_zrs[-1] > threshold*diff_zrs[-2]) and (diff_zrs[-1] > threshold*diff_zrs[-3]) and (diff_zrs[-1] > threshold*diff_zrs[-3]):
+                rem_ix = len(diff_zrs)
+        return rem_ix
+    
+    def find_first_slope_wrong(diff_zrs):
+        """The idea is that valleys should start with negative slopes, if it starts with
+        a positive slope followed by several negative slopes, the initial slope is likely wrong."""
+        rem_ix = -1
+        if diff_zrs[0] > 0 and abs(diff_zrs[0]) > abs(diff_zrs[1]) and diff_zrs[1] < 0 and diff_zrs[2] < 0 and diff_zrs[3] < 0:
+            rem_ix = 0
+        return rem_ix
+
+    
     outlier_ix = []
     hit_ix = np.where(labels == track)[0]
 
@@ -260,7 +327,7 @@ def find_track_outliers_zr(track, labels, hits, truth=None, debug=False):
 
     shape = classify_zr_shape(abs_zrs, diff_zrs)
 
-    if shape != 1 and shape != 2:
+    if shape == 0:# or shape == 1 or shape == 2 or shape == 4:
         return outlier_ix
 
     rem_stage = 0
@@ -274,7 +341,7 @@ def find_track_outliers_zr(track, labels, hits, truth=None, debug=False):
     elif shape == 1 or shape == 2:
         # Trending positive (1) or negative (2) slope
         if shape == 1:
-            rem_ixes = find_opposing_extreme_jump(diff_zrs, head_threshold=10, tail_threshold=20, reverse_opt=False)
+            rem_ixes = find_opposing_extreme_jump(diff_zrs, head_threshold=10, tail_threshold=20, reverse_opt=False, favour_1st_removal=True)
         else:
             # Convert our negative slope to a positive slope
             ndiff_zrs = np.copy(diff_zrs) * -1
@@ -298,45 +365,54 @@ def find_track_outliers_zr(track, labels, hits, truth=None, debug=False):
                 if rem_ix != -1:
                     rem_stage = 3
                     outlier_ix.append(hit_ix2[rem_ix])
-
-    elif False and shape == 1:
-        rem_ixes = find_opposing_extreme_jump(diff_zrs, head_threshold=10, tail_threshold=20)
+    elif shape == 3:
+        rem_ixes = find_opposing_extreme_jump(diff_zrs, head_threshold=10, tail_threshold=20, reverse_opt=False)
         if len(rem_ixes) > 0:
             rem_stage = 1
             rem_ix = rem_ixes[0]
             for ix in rem_ixes:
                 outlier_ix.append(hit_ix2[ix])
-        else:
-            rem_ix = find_extreme_jump(abs_diff_zrs, head_threshold=20, tail_threshold=30)
-            if rem_ix != -1:
-                rem_stage = 2
-                outlier_ix.append(hit_ix2[rem_ix])
-            else:
-                rem_ix = find_negative_extreme_jump(diff_zrs, zr_values, new_mean)
-                if rem_ix != -1:
-                    rem_stage = 3
-                    outlier_ix.append(hit_ix2[rem_ix])
-    elif False and shape == 2:
-        ndiff_zrs = diff_zrs * -1
-        rem_ixes = find_opposing_extreme_jump(ndiff_zrs, head_threshold=10, tail_threshold=20, reverse_opt=True)
-        if len(rem_ixes) > 0:
+    elif shape == 4:
+        rem_ix = chop_valley_negative_tail(diff_zrs)
+        if rem_ix != -1:
             rem_stage = 1
-            rem_ix = rem_ixes[0]
-            for ix in rem_ixes:
-                outlier_ix.append(hit_ix2[ix])
+            outlier_ix.append(hit_ix2[rem_ix])
         else:
-            rem_ix = find_extreme_jump(abs_diff_zrs, head_threshold=20, tail_threshold=30)
-            if rem_ix != -1:
+            # Convert our negative slope to a positive slope
+            ndiff_zrs = np.copy(diff_zrs) * -1
+            rem_ixes = find_opposing_extreme_jump(ndiff_zrs, head_threshold=10, tail_threshold=20, reverse_opt=True, favour_1st_removal=True)
+            if len(rem_ixes) > 0:
                 rem_stage = 2
-                outlier_ix.append(hit_ix2[rem_ix])
+                rem_ix = rem_ixes[0]
+                for ix in rem_ixes:
+                    outlier_ix.append(hit_ix2[ix])
             else:
-                rem_ix = find_positive_extreme_jump(diff_zrs, zr_values, new_mean)
+                rem_ix = find_extreme_jump(abs_diff_zrs, head_threshold=20, tail_threshold=30)
                 if rem_ix != -1:
                     rem_stage = 3
                     outlier_ix.append(hit_ix2[rem_ix])
+                else:
+                    rem_ix = find_final_slope_too_large(diff_zrs, threshold=10)
+                    if rem_ix != -1:
+                        rem_stage = 4
+                        outlier_ix.append(hit_ix2[rem_ix])
+                    else:
+                        rem_ix = find_simple_opposing_jump(diff_zrs, threshold=4)
+                        if rem_ix != -1:
+                            rem_stage = 5
+                            outlier_ix.append(hit_ix2[rem_ix])
+                        else:
+                            rem_ix = find_first_slope_wrong(diff_zrs)
+                            if rem_ix != -1:
+                                rem_stage = 6
+                                outlier_ix.append(hit_ix2[rem_ix])
 
     if rem_ix == -1:
         return outlier_ix
+    
+    # HACK:
+    #if rem_ix != -1:
+    #    return outlier_ix
 
     #print(str(shape) + ', ' + str(rem_ix) + ', ' + str(new_mean) + ', ' + str(mean_diff_zr) + ', ' + str(diff_zrs))# + ', ' + str(abs_zrs))
     #print('ami: ' + str(allowed_min) + ', amx: ' + str(allowed_max) + ', all: ' + str(abs_zrs))
