@@ -20,6 +20,7 @@ import math
 from extension import extend_submission, extend_labels
 import cone_slicing as cone
 import merge as merge
+import free_hits as free
 
 
 SCALED_DISTANCE = [1,       1,       0.50, 0.125, 0.008, 0.008, 0.00175, 0.00175]
@@ -369,6 +370,12 @@ def predict_event(event_id, hits, train_or_test, truth):
         one_submission = create_one_event_submission(event_id, hits, labels)
         score = score_event(truth, one_submission)
         print("Merged helix1&2 unrolling for event %d: %.8f" % (event_id, score))
+
+    labels = free.assign_free_hits(labels, hits)
+    if truth is not None:
+        one_submission = create_one_event_submission(event_id, hits, labels)
+        score = score_event(truth, one_submission)
+        print("Merged free-hit-reassigned score for event %d: %.8f" % (event_id, score))
 
 
     return labels

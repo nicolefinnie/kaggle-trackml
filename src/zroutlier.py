@@ -88,7 +88,9 @@ def classify_zr_shape(abs_zrs, diff_zrs):
         
     return shape
 
-def find_track_outliers_zr(track, labels, hits, truth=None, debug=False):
+def find_track_outliers_zr(track, labels, hits, find_all=False, truth=None, debug=False):
+    """Use z/r data to identify outliers. If find_all is False, only the first
+    outlier will be identified, otherwise all potential outliers will be returned."""
     def find_extreme_jump(diff_zrs, head_threshold=10, tail_threshold=20, filter_mean=True):
         """The idea is to find jumps in the z/r value that are much more
         extreme than usual, by default 10-20x larger than the mean jump.
@@ -321,15 +323,15 @@ def find_track_outliers_zr(track, labels, hits, truth=None, debug=False):
     abs_zrs = np.absolute(zr_values)
     diff_zrs = np.diff(zr_values)
     abs_diff_zrs = np.absolute(diff_zrs)
-    min_zr = zr_values.min()
-    max_zr = zr_values.max()
+    #min_zr = zr_values.min()
+    #max_zr = zr_values.max()
     mean_diff_zr = diff_zrs.mean()
     median_zr = abs(np.median(zr_values))
-    allowed_min = median_zr * 0.95
-    allowed_max = median_zr * 1.05
-    outlier_min = median_zr * 0.1
-    outlier_max = median_zr * 3.0
-    count_outliers = 0
+    #allowed_min = median_zr * 0.95
+    #allowed_max = median_zr * 1.05
+    #outlier_min = median_zr * 0.1
+    #outlier_max = median_zr * 3.0
+    #count_outliers = 0
 
     # If all diffs < 5% of the median value, track seems good
     if np.all(abs_diff_zrs < (median_zr * 0.05)):
@@ -351,17 +353,17 @@ def find_track_outliers_zr(track, labels, hits, truth=None, debug=False):
     if rem_ix != -1:
         rem_stage = 1
         outlier_ix.append(hit_ix2[rem_ix])
-    else:
+    if find_all or rem_ix == -1:
         rem_ix = find_final_slope_too_large(abs_diff_zrs, threshold=20)
         if rem_ix != -1:
             rem_stage = 2
             outlier_ix.append(hit_ix2[rem_ix])
-        else:
+        if find_all or rem_ix == -1:
             rem_ix = find_biggest_opposing_jump(diff_zrs, threshold=10, prev_diff_threshold=5)
             if rem_ix != -1:
                 rem_stage = 3
                 outlier_ix.append(hit_ix2[rem_ix])
-            else:
+            if find_all or rem_ix == -1:
                 if len(np.where(diff_zrs < 0)[0]) > len(np.where(diff_zrs > 0)[0]):
                     ndiff_zrs = np.copy(diff_zrs) * -1
                 else:
@@ -372,12 +374,12 @@ def find_track_outliers_zr(track, labels, hits, truth=None, debug=False):
                     rem_ix = rem_ixes[0]
                     for ix in rem_ixes:
                         outlier_ix.append(hit_ix2[ix])
-                else:
+                if find_all or rem_ix == -1:
                     rem_ix = find_extreme_jump(abs_diff_zrs, head_threshold=20, tail_threshold=30)
                     if rem_ix != -1:
                         rem_stage = 5
                         outlier_ix.append(hit_ix2[rem_ix])
-                    else:
+                    if find_all or rem_ix == -1:
                         if shape == 1 or shape == 2:
                             # Trending positive (1) or negative (2) slope, most values are either +ve or -ve
                             test_mean = new_mean
@@ -394,7 +396,7 @@ def find_track_outliers_zr(track, labels, hits, truth=None, debug=False):
                         if rem_ix != -1:
                             rem_stage = 6
                             outlier_ix.append(hit_ix2[rem_ix])
-                        else:
+                        if find_all or rem_ix == -1:
                             test_mean = abs_diff_zrs.mean()
                             if len(np.where(diff_zrs > 0)[0]) > len(np.where(diff_zrs < 0)[0]):
                                 rem_ix = find_positive_extreme_jump(diff_zrs, zr_values, test_mean, jump_threshold=8)
@@ -439,7 +441,7 @@ def find_track_outliers_zr(track, labels, hits, truth=None, debug=False):
             print(str(shape) + ', ' + str(rem_ix) + ', ' + str(new_mean) + ', ' + str(mean_diff_zr) + ', ' + str(diff_zrs) + ', ' + str(zr_values))
             print('CRAPPY:  ' + str(rem_stage) + ', ' + str(truth_ix))
 
-    return outlier_ix
+    return list(np.unique(outlier_ix))
 
 
 def remove_outliers_zr(labels, hits):
