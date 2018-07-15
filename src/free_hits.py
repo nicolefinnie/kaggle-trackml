@@ -20,7 +20,7 @@ def assign_free_hits(labels, hits):
         distances = np.zeros((len(labels)))
         unique_labels = np.unique(labels)
         label_counts = coll.Counter(labels).most_common(len(unique_labels))
-        count_free_hits = len(np.where(labels == 0)[0])
+        #count_free_hits = len(np.where(labels == 0)[0])
         #print('free hits available this round: ' + str(count_free_hits))
 
         hits['track_id'] = labels.tolist()
@@ -28,8 +28,8 @@ def assign_free_hits(labels, hits):
         df = hits.loc[(hits.track_id == 0)]
         hit_ids = df.hit_id.values
 
-        gz_abs, gzr, grn, gc, gs = hits.as_matrix(columns=['z_abs', 'zr', 'rn', 'c', 's']).T
-        z_abs, zr, rn, c, s = df.as_matrix(columns=['z_abs', 'zr', 'rn', 'c', 's']).T
+        gz_abs, gzr, grn, gc, gs = hits[['z_abs', 'zr', 'rn', 'c', 's']].values.T
+        zr, rn, c, s = df[['zr', 'rn', 'c', 's']].values.T
         tree = KDTree(np.column_stack([c, s, rn, zr]), metric='euclidean')
 
         for label_count in label_counts:

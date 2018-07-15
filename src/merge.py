@@ -76,7 +76,207 @@ def merge_tracks(labels1, labels2):
     labels_merged = renumber_labels(labels_merged)
     return labels_merged
 
-def heuristic_merge_tracks(labels1, labels2, overwrite_limit=4, favour_splitting=False, print_summary=True):
+def heuristic_merge_tracks(labels1, labels2, hits, overwrite_limit=4, print_summary=False):
+    """ Merge tracks from two arrays of track labels.
+
+    Merges are handled as follows:
+     - tracks from labels2 are identified and searched
+     - for each track from labels2:
+       - use track directly if no conflict with any tracks from labels1
+       - skip if labels1 already contains the same track of equal (or longer) length
+       - otherwise, if there are potentially multiple conflicting tracks from labels1
+         - if labels1 only contains a single track ID, as well as un-classified (0) hits,
+           re-assign '0' track ID to labels1 track ID (i.e. lengthen the track)
+         - otherwise, labels1 contains multiple non-zero track IDs
+           - replace any track ID 0 occurrences with the longest labels1 track ID
+           - replace any occurrences of short (len <= 3) labels1 tracks with the longest labels1 track ID
+
+    Parameters:
+     - labels1: np array of labels, each entry represents a hit, the value represents the
+       track ID that hit is assigned to. This should be considered the 'higher-quality' of
+       the two input labels
+     - labels2: np array of secondary labels, whose tracks should be merged into labels1
+
+    Returns: The merged array of labeled tracks.
+    """
+    labels_merged = np.copy(labels1)
+    labels_merged = renumber_labels(labels_merged)
+    max_track = np.amax(labels_merged)
+    labels2[labels2 != 0] = labels2[labels2 != 0] + max_track
+    trks2 = np.unique(labels2)
+    count1 = 0
+    count2 = 0
+    count3 = 0
+    count4 = 0
+    count4_len = []
+    count5 = 0
+    count6 = 0
+    count7 = 0
+    count8 = 0
+    count9 = 0
+    count10 = 0
+    count11 = 0
+    count12 = 0
+    count13 = 0
+    count14 = 0
+    count15 = 0
+    count16 = 0
+    for trk2 in trks2:
+        if trk2 == 0:
+            continue
+        trk2_ix = np.where(labels2 == trk2)[0]
+        trk2_length = len(trk2_ix)
+        if trk2_length < 2:
+            continue
+        trk1_val = labels_merged[trk2_ix]
+        #print('trk2: ' + str(trk2) + ', label1: ' + str(trk1_val))
+        trk1_uniq = np.unique(trk1_val)
+        # Now we know which tracks from the 1st label overlap with the tracks from the 2nd label
+        if len(trk1_uniq) == 1:
+            if trk1_uniq[0] == 0:
+                #print('Good candidate to replace!')
+                # This track was not found by labels1, just directly use the
+                # track from labels2.
+                count1 = count1 + 1
+                labels_merged[trk2_ix] = trk2
+            else:
+                # We found a track that is at least as long as the current
+                # track in labels1. Nothing more needed, at least for now.
+                # We could consider scenarios where the labels1 track contains
+                # hits from 2 different tracks, where labels2 only has a
+                # shorter single track. In this case, it may be good to split
+                # the labels1 track into two pieces. However, this condition
+                # would be very hard to detect, for now we want to favour
+                # longer tracks whenever possible.
+                #print('Same track found, skipping...')
+                count2 = count2 + 1
+        else:
+            found_tracks = 0
+            # Get counts for all identified tracks from labels1 that match trk2
+            trk1_counts = coll.Counter(trk1_val).most_common(len(trk1_uniq))
+            longest_track_id = trk1_counts[0][0]
+            longest_track_count = trk1_counts[0][1]
+            second_track_id = trk1_counts[1][0]
+            second_track_count = trk1_counts[1][1]
+            # If longest track in labels1 was 0, create a new track, but only
+            # from free hits, or from small tracks. Also, if there is not
+            # enough overlap (less than half the hits overlap), also create
+            # a new track.
+            if longest_track_id == 0:
+                count5 = count5 + 1
+                longest_track_id = trk2
+                # See if we should instead lengthen the longest non-zero track
+                if len(trk1_uniq) == 2:
+                    test_track_ix = np.where(labels_merged == second_track_id)[0]
+                    if len(test_track_ix) <= (second_track_count + 3):
+                        outliers1 = zro.find_track_outliers_zr(second_track_id, labels_merged, hits, find_all=True)
+                        labelx = np.copy(labels_merged)
+                        labelx[trk2_ix] = second_track_id
+                        outliers2 = zro.find_track_outliers_zr(second_track_id, labelx, hits, find_all=True)
+                        if len(outliers2) <= len(outliers1):
+                            longest_track_id = second_track_id
+                            longest_track_count = second_track_count
+            elif (trk2_length > 20) or (longest_track_count > 20):
+                count9 = count9 + 1
+                longest_track_id = trk2
+            elif (trk2_length > 6) and (longest_track_count < int(trk2_length/2)) and second_track_id != 0:
+                # Try to avoid creating crossed tracks, do not lengthen existing track if not
+                # enough overlap.
+                count10 = count10 + 1
+                trk1a = np.where(labels_merged == longest_track_id)[0]
+                if longest_track_count + 3 >= len(trk1a):
+                    #print('LIAM: Top 2 tracks, new: ' + str(trk2_length) + ', len1: '  + str(longest_track_count) + ', len1a: ' + str(len(trk1a)) + ', len2: ' + str(second_track_count) + ', len2a: ' + str(len(trk2a)))
+                    # Lengthen the longest track, it's fully contained by our new/proposed track.
+                    # Reset 2nd longest track if mostly contained in new/proposed track.
+                    count14 = count14 + 1
+                    trk2a = np.where(labels_merged == second_track_id)[0]
+                    if second_track_count + 1 >= len(trk2a):
+                        count15 = count15 + 1
+                        labels_merged[trk2a] = longest_track_id
+                else:
+                    # Not much overlap, start a new track to avoid hurting existing tracks.
+                    longest_track_id = trk2
+            else:
+                # If the old track had too many hits not part of the new/proposed track, do
+                # not lengthen it - that may lose majority. Better to start a new track.
+                trk1a = np.where(labels_merged == longest_track_id)[0]
+                if longest_track_count + 6 < len(trk1a):
+                    count16 = count16 + 1
+                    longest_track_id = trk2
+
+            for trk1 in trk1_uniq:
+                if trk1 == 0:
+                    continue
+                trk1_ix = np.where(labels_merged == trk1)[0]
+                if len(trk1_ix) > 1:
+                    found_tracks = found_tracks + 1
+            if found_tracks > 1:
+                #print('Found ' + str(found_tracks) + ' non-trivial tracks.')
+                count3 = count3 + 1
+                # If there are un-classified hits, assign those to the track
+                # ID with the most hits.
+                for label_ix in trk2_ix:
+                    if labels_merged[label_ix] == 0:
+                        labels_merged[label_ix] = longest_track_id
+                        count6 = count6 + 1
+
+                # If there are tracks of length 2 or less, and one or both
+                # of those hits are included in the target track, re-assign
+                # those matching the labels2 track to the most common
+                # original track ID.
+                for trk1_count in trk1_counts:
+                    #if trk1_count[1] <= overwrite_limit:
+                    trk1_count_ix = np.where(labels_merged == trk1_count[0])[0]
+                    if len(trk1_count_ix) <= overwrite_limit:
+                        outliers = zro.find_track_outliers_zr(trk2, labels2, hits, find_all=True)
+                        for label_ix in trk2_ix:
+                            if labels_merged[label_ix] == trk1_count[0] and label_ix in outliers:
+                                count13 = count13 + 1
+                            elif labels_merged[label_ix] == trk1_count[0]:# and label_ix not in outliers:
+                                labels_merged[label_ix] = longest_track_id
+                                count7 = count7 + 1
+                    else:
+                        outliers = zro.find_track_outliers_zr(trk1_count[0], labels_merged, hits, find_all=True)
+                        for label_ix in trk2_ix:
+                            if labels_merged[label_ix] == trk1_count[0] and label_ix in outliers:
+                                labels_merged[label_ix] = longest_track_id
+                                count12 = count12 + 1
+
+            else:
+                # Only the track ID, as well as track ID 0, were found in labels1.
+                # Replace any occurrences of ID 0 with the labels1 track ID.
+                count4 = count4 + 1
+                count4_len.append(len(trk2_ix))
+                # If there are un-classified hits, assign those to the track
+                # ID with the most hits (lengthens the track).
+                for label_ix in trk2_ix:
+                    if labels_merged[label_ix] == 0:
+                        labels_merged[label_ix] = longest_track_id
+                        count8 = count8 + 1
+
+    if print_summary:
+        print('Simple replacement of unclassified hits: ' + str(count1))
+        print('Similar tracks (no-op): ' + str(count2))
+        print('New track creations from little overlap(0): ' + str(count5))
+        print('New track creations from huge tracks(>20): ' + str(count9))
+        print('Test for new track creations from little overlap(non-0): ' + str(count10))
+        print('--> Lengthen longest overlap instead: ' + str(count14))
+        print('  --> And clear 2nd longest track: ' + str(count15))
+        print('Skip extension due to too little overlap: ' + str(count16))
+        print('Multiple non-trivial tracks: ' + str(count3))
+        print('--> of which partial track ID 0 hits were updated: ' + str(count6))
+        print('--> of which partial track ID non-0 hits were updated: ' + str(count7))
+        print('--> of which partial track ID non-0 hits were skipped: ' + str(count13))
+        print('--> of which outliers were overwritten: ' + str(count12))
+        print('Tracks to be lengthened: ' + str(count4))
+        print('--> of which track ID 0 hits were updated: ' + str(count8))
+        print('--> from which new tracks were created instead: ' + str(count11))
+        noises = np.unique(np.asarray(count4_len))
+        print('--> of which labels2 unique track lengths were: ' + str(noises))
+
+    return labels_merged
+
+def heuristic_merge_tracks_old(labels1, labels2, overwrite_limit=4, favour_splitting=False, print_summary=True):
     """ Merge tracks from two arrays of track labels.
 
     Merges are handled as follows:
@@ -670,6 +870,18 @@ def remove_track_outliers(track, labels, hits, aggressive):
             found_bad_zr = found_bad_zr + len(outlier_zr)
             for oix in outlier_zr:
                 labels[oix] = 0
+
+            # outlier_zr = zro.find_track_outliers_zr(track, labels, hits)
+            # if len(outlier_zr) > 0:
+            #     found_bad_zr = found_bad_zr + len(outlier_zr)
+            #     for oix in outlier_zr:
+            #         labels[oix] = 0
+
+            #     outlier_zr = zro.find_track_outliers_zr(track, labels, hits)
+            #     if len(outlier_zr) > 0:
+            #         found_bad_zr = found_bad_zr + len(outlier_zr)
+            #         for oix in outlier_zr:
+            #             labels[oix] = 0
 
     if aggressive:
         # Check if the sorted hits (on z-axis) go through the volumes

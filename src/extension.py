@@ -1,5 +1,7 @@
 import numpy as np
 from sklearn.neighbors import KDTree
+import collections as coll
+import track_score as score
 
 def extend_labels(iter, labels, hits, do_swap=False, limit=0.04):
     df = hits.copy(deep=True)
@@ -11,7 +13,7 @@ def extend_submission(iter, submissions, hits, do_swap=False, limit=0.04):
     df = extend(iter, df, do_swap, limit)
     return df[['event_id', 'hit_id', 'track_id']]       
     
-def _one_cone_slice(df, angle, delta_angle, limit=0.04, num_neighbours=18):
+def _one_cone_slice(df, angle, delta_angle, limit=0.04, num_neighbours=18, use_scoring=False):
 
     df1 = df.loc[(df.arctan2>(angle - delta_angle)/180*np.pi) & (df.arctan2<(angle + delta_angle)/180*np.pi)]
 
@@ -20,7 +22,7 @@ def _one_cone_slice(df, angle, delta_angle, limit=0.04, num_neighbours=18):
         return df
 
     hit_ids = df1.hit_id.values
-    x,y,z = df1.as_matrix(columns=['x', 'y', 'z']).T
+    x,y,z = df1[['x', 'y', 'z']].values.T
     r  = (x**2 + y**2)**0.5
     r  = r/1000
     a  = np.arctan2(y,x)
@@ -30,15 +32,33 @@ def _one_cone_slice(df, angle, delta_angle, limit=0.04, num_neighbours=18):
 
     track_ids = list(df1.track_id.unique())
     num_track_ids = len(track_ids)
-    min_length=3
+    min_length=2
 
-    for i in range(num_track_ids):
-        p = track_ids[i]
-        if p==0: continue
+    labels = df.track_id.values
+    count_good = 0
+    count_bad = 0
+    count_outlier_correct = 0
+    count_outlier_wrong = 0
+
+    label_track_counts = coll.Counter(df1.track_id.values).most_common(num_track_ids)
+    
+    for track_count in label_track_counts:
+        p = track_count[0]
+        if p == 0: continue
 
         idx = np.where(df1.track_id==p)[0]
         cur_track_len = len(idx)
         if cur_track_len<min_length: continue
+
+        # Un-comment following code to find the truth particle ID for the track.
+        #truth_ix = []
+        #for ii in idx:
+        #    truth_ix.append(hit_ids[ii] - 1)
+        #tdf = truth.loc[truth_ix]
+        #truth_count = coll.Counter(tdf.particle_id.values).most_common(1)
+        #truth_particle_id = truth_count[0][0]
+        #print('track: ' + str(p) + ', len: ' + str(len(idx)) + ', idx: ' + str(idx))
+        #print('truth particle: ' + str(truth_particle_id) + ', count:' + str(truth_count[0][1]))
 
         if angle>0:
             idx = idx[np.argsort( z[idx])]
@@ -73,16 +93,34 @@ def _one_cone_slice(df, angle, delta_angle, limit=0.04, num_neighbours=18):
         ns = ns[(r0 - r[ns] > 0.01) & (diff < (1 - np.cos(limit)))]
         for n in ns:
             df_ix = hit_ids[n] - 1
-            old_track = df.loc[df_ix, 'track_id']
-            if old_track == 0:
-                df.loc[df_ix, 'track_id'] = p
-            elif old_track != 0:
-                # If the hit is already occupied by another track, only take ownership
-                # of the hit if our track is longer than the current-occupying track.
-                existing_track_len = len(np.where(df.track_id==old_track)[0])
-                if cur_track_len > existing_track_len:
-                    df.loc[df_ix, 'track_id'] = p
-    
+            # Un-comment this to see if we are extending the track properly
+            #is_good = (truth.loc[df_ix, 'particle_id'] == truth_particle_id)
+
+            if use_scoring:
+                outlier_modifier = 0.75
+                orig_label = labels[df_ix]
+                labels[df_ix] = p
+                new_score = score.calculate_track_score(p, labels, df, outlier_modifier=outlier_modifier, outlier_ix=df_ix)
+                labels[df_ix] = orig_label
+                if orig_label != 0:
+                    orig_score = score.calculate_track_score(orig_label, labels, df, outlier_modifier=outlier_modifier, outlier_ix=df_ix)
+                else:
+                    orig_score = 0
+
+                if new_score >= orig_score:
+                    labels[df_ix] = p
+                    cur_track_len = cur_track_len + 1
+            else:
+                old_track = labels[df_ix]
+                if old_track == 0:
+                    labels[df_ix] = p
+                else:
+                    # If the hit is already occupied by another track, only take ownership
+                    # of the hit if our track is longer than the current-occupying track.
+                    existing_track_len = len(np.where(labels==old_track)[0])
+                    if cur_track_len > existing_track_len:
+                        labels[df_ix] = p
+
 
         ## extend end point
         ns = tree.query([[c1, s1, r1]], k=min(num_neighbours, min_num_neighbours), return_distance=False)
@@ -94,16 +132,36 @@ def _one_cone_slice(df, angle, delta_angle, limit=0.04, num_neighbours=18):
         ns = ns[(r[ns] - r1 > 0.01) & (diff < (1 - np.cos(limit)))]
         for n in ns:  
             df_ix = hit_ids[n] - 1
-            old_track = df.loc[df_ix, 'track_id']
-            if old_track == 0:
-                df.loc[df_ix, 'track_id'] = p
-            elif old_track != 0:
-                # If the hit is already occupied by another track, only take ownership
-                # of the hit if our track is longer than the current-occupying track.
-                existing_track_len = len(np.where(df.track_id==old_track)[0])
-                if cur_track_len > existing_track_len:
-                    df.loc[df_ix, 'track_id'] = p
-      
+            # Un-comment this to see if we are extending the track properly
+            #is_good = (truth.loc[df_ix, 'particle_id'] == truth_particle_id)
+
+            if use_scoring:
+                outlier_modifier=0.75
+                orig_label = labels[df_ix]
+                labels[df_ix] = p
+                new_score = score.calculate_track_score(p, labels, df, outlier_modifier=outlier_modifier, outlier_ix=df_ix)
+                labels[df_ix] = orig_label
+                if orig_label != 0:
+                    orig_score = score.calculate_track_score(orig_label, labels, df, outlier_modifier=outlier_modifier, outlier_ix=df_ix)
+                else:
+                    orig_score = 0
+
+                if new_score >= orig_score:
+                    labels[df_ix] = p
+                    cur_track_len = cur_track_len + 1
+            else:
+                old_track = labels[df_ix]
+                if old_track == 0:
+                    labels[df_ix] = p
+                else:
+                    # If the hit is already occupied by another track, only take ownership
+                    # of the hit if our track is longer than the current-occupying track.
+                    existing_track_len = len(np.where(labels==old_track)[0])
+                    if cur_track_len > existing_track_len:
+                        labels[df_ix] = p
+
+    df['track_id'] = labels
+
     return df
 
 def extend(iter, df, do_swap=False, limit=0.04):
@@ -114,7 +172,7 @@ def extend(iter, df, do_swap=False, limit=0.04):
     df = df.assign(d = np.sqrt( df.x**2 + df.y**2 + df.z**2 ))
     df = df.assign(r = np.sqrt( df.x**2 + df.y**2))
     df = df.assign(arctan2 = np.arctan2(df.z, df.r))
-
+    df = df.assign(zr = df.z / df.r)
 
     for angle in range(-90,90,1):
 

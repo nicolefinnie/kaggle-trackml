@@ -242,11 +242,16 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
             df.to_csv(label_file, index=False, header=['label'])
 
     # Merge all dbscan loop labels together
+    merge_count = 0
     for i in range(len(labels_full)):
         if i == 0:
             labels_merged = labels_full[0]
         else:
-            labels_merged = merge.heuristic_merge_tracks(labels_merged, labels_full[i], overwrite_limit=merge_overwrite_limit, print_summary=False)
+            labels_merged = merge.heuristic_merge_tracks(labels_merged, labels_full[i], all_hits, overwrite_limit=merge_overwrite_limit, print_summary=False)
+            merge_count = merge_count + 1
+            # Periodically remove small tracks/noise to help merge performance
+            if merge_count % 3 == 0:
+                (labels_merged, _) = merge.remove_small_tracks(labels_merged, smallest_track_size=3)
             if truth is not None:
                 one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
                 score = score_event(truth, one_submission)
@@ -365,7 +370,7 @@ def predict_event(event_id, hits, train_or_test, truth):
         print("After outlier removal helix2 %d: %.8f" % (event_id, score))
 
         
-    labels = merge.heuristic_merge_tracks(labels_helix1, labels_helix2, overwrite_limit=3, print_summary=False)
+    labels = merge.heuristic_merge_tracks(labels_helix1, labels_helix2, hits, overwrite_limit=3, print_summary=False)
     if truth is not None:
         one_submission = create_one_event_submission(event_id, hits, labels)
         score = score_event(truth, one_submission)
