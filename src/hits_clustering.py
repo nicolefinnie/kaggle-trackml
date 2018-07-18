@@ -22,6 +22,7 @@ import cone_slicing as cone
 import merge as merge
 import free_hits as free
 
+INPUT_PATH = '../input'
 
 SCALED_DISTANCE = [1,       1,       0.50, 0.125, 0.008, 0.008, 0.00175, 0.00175]
 FEATURE_MATRIX = ['sina1', 'cosa1', 'z1', 'z2',  'xd', 'yd', 'px', 'py']
@@ -190,53 +191,69 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
                 score = score_event(truth, one_submission)
                 print("Processed dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
         else:
-            labels_subset[i] = merge.renumber_labels(labels_subset[i])
-
-            # If only predicting on unmatched hits, add any new predicted tracks directly
-            # into the output labels. Otherwise, just return the newly predicted output labels.
-            if unmatched_only:
-                labels_full.append(np.copy(all_labels))
-                labels_subset[i][labels_subset[i] == 0] = 0 - len(all_labels) - 1
-                labels_subset[i] = labels_subset[i] + len(all_labels) + 1
-                labels_full[i][labels_full[i] == 0] = labels_subset[i]
-            else:
-                labels_full.append(np.copy(labels_subset[i]))
-
-            if truth is not None:
-                one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
-                score = score_event(truth, one_submission)
-                print("Unfiltered dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
-
-            # If desired, extend tracks
-            if track_extension_limits is not None:
-                for ix, limit in enumerate(track_extension_limits):
-                    labels_full[i] = extend_labels(ix, labels_full[i], all_hits, do_swap=(ix%2==1), limit=(limit))
-                    if False and truth is not None:
-                        one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
-                        score = score_event(truth, one_submission)
-                        print("Extension %d loop %d score for event %d: %.8f" % (ix,i+1,event_id, score))
-                    
-                labels_full[i] = merge.renumber_labels(labels_full[i])
-                
+            label_file_extend = label_file_root + '_dbscan' + str(i+1) + '_extend.csv'
+            if os.path.exists(label_file_extend):
+                print('Loading dbscan loop ' + str(i+1) + ' processed file: ' + label_file_extend)
+                labels_full.append(pd.read_csv(label_file_extend).label.values)
                 if truth is not None:
                     one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
                     score = score_event(truth, one_submission)
-                    print("Unfiltered extended dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
+                    print("Processed extended dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
             else:
-                labels_full[i] = merge.renumber_labels(labels_full[i])
+                labels_subset[i] = merge.renumber_labels(labels_subset[i])
+
+                # If only predicting on unmatched hits, we still need to generate a full set of
+                # labeled tracks for track extension, merging, etc. Set any hits assigned from
+                # the previous phase to 0. We will merge with the tracks from the previous phase
+                # at the end, after track extension and merging of the unmatched hits.
+                if unmatched_only:
+                    labels_full.append(np.copy(all_labels))
+                    labels_subset[i][labels_subset[i] == 0] = 0 - len(all_labels) - 1
+                    labels_subset[i] = labels_subset[i] + len(all_labels) + 1
+                    labels_full[i][labels_full[i] != 0] = -1
+                    labels_full[i][labels_full[i] == 0] = labels_subset[i]
+                    labels_full[i][labels_full[i] == -1] = 0
+                else:
+                    labels_full.append(np.copy(labels_subset[i]))
+
+                if truth is not None:
+                    one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
+                    score = score_event(truth, one_submission)
+                    print("Unfiltered dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
+
+                # If desired, extend tracks
+                if track_extension_limits is not None:
+                    for ix, limit in enumerate(track_extension_limits):
+                        labels_full[i] = extend_labels(ix, labels_full[i], all_hits, do_swap=(ix%2==1), limit=(limit))
+                        if False and truth is not None:
+                            one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
+                            score = score_event(truth, one_submission)
+                            print("Extension %d loop %d score for event %d: %.8f" % (ix,i+1,event_id, score))
+                    
+                    labels_full[i] = merge.renumber_labels(labels_full[i])
+                
+                    if truth is not None:
+                        one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
+                        score = score_event(truth, one_submission)
+                        print("Unfiltered extended dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
+                else:
+                    labels_full[i] = merge.renumber_labels(labels_full[i])
+
+                # Save the predicted tracks to a file so we don't need to re-calculate next time.
+                df = pd.DataFrame(labels_full[i])
+                df.to_csv(label_file_extend, index=False, header=['label'])
 
             if filter_hits:
                 # Filter out tracks that are too small, as well as hits that look
                 # like outliers, i.e. duplicate-z values, slopes that do not match
                 # other hits in the track, etc.
-                labels_full[i] = merge.remove_outliers(labels_full[i], all_hits, smallest_track_size=5, print_counts=False)
+                labels_full[i] = merge.remove_outliers(labels_full[i], all_hits, smallest_track_size=6, print_counts=False)
                 labels_full[i] = merge.renumber_labels(labels_full[i])
 
                 if truth is not None:
                     one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
                     score = score_event(truth, one_submission)
                     print("Filtered non-outlier dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
-
             # Save the predicted tracks to a file so we don't need to re-calculate next time.
             df = pd.DataFrame(labels_full[i])
             df.to_csv(label_file, index=False, header=['label'])
@@ -249,17 +266,29 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
         else:
             labels_merged = merge.heuristic_merge_tracks(labels_merged, labels_full[i], all_hits, overwrite_limit=merge_overwrite_limit, print_summary=False)
             merge_count = merge_count + 1
-            # Periodically remove small tracks/noise to help merge performance
-            if merge_count % 3 == 0:
+            # Periodically remove small tracks/noise to help merge performance.
+            # If we're only dealing with unmatched hits from a previous round, don't filter though,
+            # since we have relatively few tracks already, and removing even small tracks hurts.
+            if merge_count % 3 == 0 and not unmatched_only:
                 (labels_merged, _) = merge.remove_small_tracks(labels_merged, smallest_track_size=3)
             if truth is not None:
                 one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
                 score = score_event(truth, one_submission)
                 print("Merged loop 1-%d score for event %d: %.8f" % (i+1,event_id, score))
 
+    # If we merged the unmatched hits only, we now need to merge those with the full
+    # set of tracks from a previous phase. We assume the previous phase (all_labels)
+    # has a much stronger set of tracks, so those should be listed first on the merge.
+    if unmatched_only:
+        labels_merged = merge.heuristic_merge_tracks(all_labels, labels_merged, all_hits, overwrite_limit=merge_overwrite_limit, print_summary=False)
+        if truth is not None:
+            one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
+            score = score_event(truth, one_submission)
+            print("Final merged loop 1 score for event %d: %.8f" % (event_id, score))
+
     return (labels_merged)
 
-def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, model_parameters):
+def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, model_parameters, one_phase_only=False):
     # Shortcut - if we've previously generated and saved labels, just use them
     # rather than re-generating.
     label_file_root = 'event_' + str(event_id)+'_labels_' + label_identifier
@@ -287,21 +316,22 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
         score = score_event(truth, one_submission)
         print("Filtered 1st pass score for event %d: %.8f" % (event_id, score))
 
-    label_file_root2 = label_file_root + '_phase2'
-    model = Clusterer(model_parameters)
-    (labels) = run_predictions(event_id, labels, hits, truth, model, label_file_root2, unmatched_only=True, filter_hits=False, track_extension_limits=EXTENSION_LIGHT_LIMITS, merge_overwrite_limit=2)
+    if not one_phase_only:
+        label_file_root2 = label_file_root + '_phase2'
+        model = Clusterer(model_parameters)
+        (labels) = run_predictions(event_id, labels, hits, truth, model, label_file_root2, unmatched_only=True, filter_hits=False, track_extension_limits=EXTENSION_STANDARD_LIMITS)
 
-    if truth is not None:
-        # Score for the event
-        one_submission = create_one_event_submission(event_id, hits, labels)
-        score = score_event(truth, one_submission)
-        print("2nd pass score for event %d: %.8f" % (event_id, score))
+        if truth is not None:
+            # Score for the event
+            one_submission = create_one_event_submission(event_id, hits, labels)
+            score = score_event(truth, one_submission)
+            print("2nd pass score for event %d: %.8f" % (event_id, score))
 
-        # Un-comment this if you want to see the quality of the seeds generated.
-        #seed_length = 5
-        #my_volumes = [7, 8, 9]
-        #labels = sd.filter_invalid_tracks(labels, hits, my_volumes, seed_length)
-        #sd.count_truth_track_seed_hits(labels, truth, seed_length, print_results=True)
+            # Un-comment this if you want to see the quality of the seeds generated.
+            #seed_length = 5
+            #my_volumes = [7, 8, 9]
+            #labels = sd.filter_invalid_tracks(labels, hits, my_volumes, seed_length)
+            #sd.count_truth_track_seed_hits(labels, truth, seed_length, print_results=True)
 
     df = pd.DataFrame(labels)
     df.to_csv(label_file, index=False, header=['label'])
@@ -357,8 +387,9 @@ def predict_event(event_id, hits, train_or_test, truth):
     model_parameters.append(SCALED_DISTANCE_2)
     #model_parameters.append([1, -1, 3, -3, 4, -4, 6, -6, 9, -9, 12, -12, 15, -15, 20, -20, 25, -25])
     model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6, -10, 2, 8, -2])
-    print_info(2, model_parameters)      
-    labels_helix2 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix2', model_parameters)
+    print_info(2, model_parameters)
+    # Running helix2 in 2 phases hurts our score, so do a single-phase only
+    labels_helix2 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix2', model_parameters, one_phase_only=True)
 
     
 
@@ -376,7 +407,7 @@ def predict_event(event_id, hits, train_or_test, truth):
         print("After outlier removal helix2 %d: %.8f" % (event_id, score))
 
         
-    labels = merge.heuristic_merge_tracks(labels_helix1, labels_helix2, hits, overwrite_limit=3, print_summary=False)
+    labels = merge.heuristic_merge_tracks(labels_helix1, labels_helix2, hits, overwrite_limit=6, print_summary=False)
     if truth is not None:
         one_submission = create_one_event_submission(event_id, hits, labels)
         score = score_event(truth, one_submission)
@@ -393,7 +424,7 @@ def predict_event(event_id, hits, train_or_test, truth):
 
 
 def run_single_threaded_training(skip, nevents):
-    path_to_train = "../input/train_1"
+    path_to_train = os.path.join(INPUT_PATH, 'train_1')
     dataset_submissions = []
     dataset_scores = []
 
@@ -443,7 +474,7 @@ if __name__ == '__main__':
     if not training_events == 0:
         run_single_threaded_training(training_skip, training_events)
 
-    path_to_test = "../input/test"
+    path_to_test = os.path.join(INPUT_PATH, 'test')
     test_dataset_submissions = []
 
     #create_submission = True # True for submission 
