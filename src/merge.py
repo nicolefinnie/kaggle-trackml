@@ -627,6 +627,149 @@ def find_dimension_outlier(track, labels, df, dimension):
     #   in with volume/layer/module ids, i.e. only allow bigger jumps between layers.
     return outlier_ix                
 
+def find_nearest_value(array, value):
+    array = np.asarray(array)
+    idx = (np.abs(array - value)).argmin()
+    return array[idx]
+
+def find_furthest_value(array, value):
+    array = np.asarray(array)
+    idx = (np.abs(array - value)).argmax()
+    return array[idx]
+
+def find_dupzr_outlier(zr1, zr2, zrdup1, zrdup2):
+    diff_zr = zr2 - zr1
+    new_zr = zr2 + diff_zr
+    outlier_zr = find_furthest_value([zrdup1, zrdup2], new_zr)
+    return outlier_zr
+
+def all_zs_unique(zs, num_hits_in_layer, source_ix):
+    uniq = np.unique(zs[source_ix:source_ix+num_hits_in_layer])
+    return len(uniq) == num_hits_in_layer
+
+def can_detect_dupzr(old_zr, new_zr, zs, num_hits_in_layer, source_ix):
+    possible = (old_zr != 0 and new_zr != 0)
+    if not possible:
+        mc = num_hits_in_layer
+        for ii in range(mc):
+            if (ii % 2 == 0) and ii < (mc - 1) and zs[source_ix+ii] != zs[source_ix+ii+1]:
+                possible = True
+    return possible
+
+def find_dupzr_in_layer(old_zr, new_zr, zs, zrs, num_hits_in_layer, source_ix):
+    mc = num_hits_in_layer
+    duplicatez_source_ix = []
+    if old_zr != 0 and new_zr != 0:
+        diff_zr = new_zr - old_zr
+        new_zr = new_zr + diff_zr
+        sum_it = new_zr
+        count_it = 1
+    else:
+        sum_it = 0
+        count_it = 0
+        for ii in range(mc):
+            if ii < (mc - 1) and zs[source_ix+ii] != zs[source_ix+ii+1]:
+                sum_it = sum_it + zrs[source_ix+ii]
+                count_it = count_it + 1
+                if ii == (mc - 2):
+                    sum_it = sum_it + zrs[source_ix+ii+1]
+                    count_it = count_it + 1
+    temp_mean = sum_it / count_it
+    for ii in range(mc):
+        if ii < (mc - 1) and zs[source_ix+ii] == zs[source_ix+ii+1]:
+            zrdup = find_furthest_value([zrs[source_ix+ii], zrs[source_ix+ii+1]], temp_mean)
+            if zrdup == zrs[source_ix+ii]:
+                duplicatez_source_ix.append(source_ix+ii)
+                sum_it = sum_it + zrs[source_ix+ii+1]
+            else:
+                duplicatez_source_ix.append(source_ix+ii+1)
+                sum_it = sum_it + zrs[source_ix+ii]
+            count_it = count_it + 1
+    temp_mean = sum_it / count_it
+    return (temp_mean, duplicatez_source_ix)
+
+def find_duplicate_z_using_zr(track, labels, df, debug=False):
+    duplicatez_ix = []
+    hit_ix = np.where(labels == track)[0]
+
+    if debug: print('hits: ' + str(hit_ix))
+    # Need at least 4 values to be able to evaluate duplicate z-values.
+    if len(hit_ix) < 4:
+        if debug: print('Small hits! ' + str(len(hit_ix)))
+        return duplicatez_ix
+
+    df2 = df.loc[hit_ix]        
+    df2 = df2.sort_values('z')
+    hit_ix2 = df2.index.values # remember new indexes after sorting
+
+    if debug: print(df2)
+    xs = df2.x.values
+    ys = df2.y.values
+    zs = df2.z.values
+    zrs = df2.zr.values
+    volumes = df2.volume_id.values
+    layers = df2.layer_id.values
+
+    # The diff from one layer to the next within the same volume should
+    # generally be relatively constant. Find the layer average for the
+    # two layers before the layer that contains duplicate z-values.
+    merged_layers = []
+    merged_counts = []
+    for layer in layers:
+        if len(merged_layers) == 0 or layer != merged_layers[-1]:
+            merged_layers.append(layer)
+            merged_counts.append(1)
+        else:
+            merged_counts[-1] = merged_counts[-1] + 1
+
+    if debug: print('Merged layers: ' + str(merged_layers))
+    if debug: print('Merged counts: ' + str(merged_counts))
+    old_zr = 0
+    new_zr = 0
+    source_ix = 0
+    merged_zrs = []
+    need_reverse_scan = False
+    for mix, ml in enumerate(merged_layers):
+        mc = merged_counts[mix]
+        if all_zs_unique(zs, mc, source_ix):
+            merged_zrs.append(np.mean(zrs[source_ix:source_ix+mc]))
+        elif old_zr != 0 and new_zr != 0:
+            (temp_mean, source_ix_dups) = find_dupzr_in_layer(old_zr, new_zr, zs, zrs, mc, source_ix)
+            for src_ix in source_ix_dups:
+                duplicatez_ix.append(hit_ix2[src_ix])
+            merged_zrs.append(temp_mean)
+        else:
+            merged_zrs.append(0)
+            need_reverse_scan = True
+
+        old_zr = new_zr
+        new_zr = merged_zrs[mix]
+        source_ix = source_ix + mc
+
+    if need_reverse_scan:
+        old_zr = 0
+        new_zr = 0
+        source_ix = len(zs)
+        for mix, ml in reversed(list(enumerate(merged_layers))):
+            mc = merged_counts[mix]
+            source_ix = source_ix - mc
+            if merged_zrs[mix] == 0 and can_detect_dupzr(old_zr, new_zr, zs, mc, source_ix):
+                (temp_mean, source_ix_dups) = find_dupzr_in_layer(old_zr, new_zr, zs, zrs, mc, source_ix)
+                for src_ix in source_ix_dups:
+                    duplicatez_ix.append(hit_ix2[src_ix])
+                merged_zrs[mix] = temp_mean
+            elif merged_zrs[mix] == 0:
+                if debug: print('Rev. skipping, missing old_zr/new_zr, ix: ' + str(mix) + ', zs: ' + str(zs))
+
+            old_zr = new_zr
+            new_zr = merged_zrs[mix]
+    
+
+    if len(duplicatez_ix) > 0 and debug:
+        print('Duplicatez found on track ' + str(track) + ', removed: ' + str(duplicatez_ix))
+
+    return duplicatez_ix
+
 def find_duplicate_z(track, labels, df):
     def number_is_between(a1, a2, a3):
         return (a1 >= a2 and a2 >= a3) or (a1 <= a2 and a2 <= a3)
@@ -887,6 +1030,16 @@ def remove_track_outliers(track, labels, hits, aggressive):
         # Check if the sorted hits (on z-axis) go through the volumes
         # and layers in the expected order
         duplicatez_ix = find_duplicate_z(track, labels, hits)
+        if len(duplicatez_ix) > 0:
+            #print('track ' + str(track) + ' duplicate z: ' + str(duplicatez_ix))
+            found_bad_z = found_bad_z + len(duplicatez_ix)
+            for bzix in duplicatez_ix:
+                labels[bzix] = 0
+
+    if True:
+        # Check if the sorted hits (on z-axis) go through the volumes
+        # and layers in the expected order
+        duplicatez_ix = find_duplicate_z_using_zr(track, labels, hits)
         if len(duplicatez_ix) > 0:
             #print('track ' + str(track) + ' duplicate z: ' + str(duplicatez_ix))
             found_bad_z = found_bad_z + len(duplicatez_ix)
