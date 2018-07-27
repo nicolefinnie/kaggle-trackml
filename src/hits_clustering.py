@@ -22,7 +22,7 @@ import cone_slicing as cone
 import merge as merge
 import free_hits as free
 
-INPUT_PATH = '../input'
+INPUT_PATH = '../../input'
 
 SCALED_DISTANCE = [1,       1,       0.50, 0.125, 0.008, 0.008, 0.00175, 0.00175]
 FEATURE_MATRIX = ['sina1', 'cosa1', 'z1', 'z2',  'xd', 'yd', 'px', 'py']
@@ -30,12 +30,21 @@ FEATURE_MATRIX = ['sina1', 'cosa1', 'z1', 'z2',  'xd', 'yd', 'px', 'py']
 SCALED_DISTANCE_2 = [1,       1,       0.5, 0.008, 0.008, 0.00185, 0.00185]
 FEATURE_MATRIX_2 = ['sina1', 'cosa1', 'z3', 'xd', 'yd', 'px', 'py']
 
+SCALED_DISTANCE_3 = [1,       1, 0.5, 0.25]
+FEATURE_MATRIX_3 = ['sina1','cosa1', 'zr', 'z1']
+
+SCALED_DISTANCE_4 = [1,       1, 0.5, 0.25]
+FEATURE_MATRIX_4 = ['sina1','cosa1', 'zr', 'z3']
+
+
+SCALED_DISTANCE_5 = [1, 1, 0.5, 0.25, 0.008, 0.008, 0.00175, 0.00175]
+FEATURE_MATRIX_5 = ['sina1', 'cosa1', 'r0', 'z3', 'xd', 'yd', 'px', 'py']
 
 
 STEPRR = 0.03
 
 STEPEPS = 0.0000015
-STEPS = 120
+STEPS = 100
 EXTENSION_STANDARD_LIMITS = [0.02, 0.04, 0.06, 0.08, 0.10]
 EXTENSION_LIGHT_LIMITS = [0.03, 0.07]
 
@@ -63,7 +72,7 @@ class Clusterer(object):
         dfh['r'] = np.sqrt(dfh.x**2+dfh.y**2)
         dfh['z5'] = (dfh.r - np.absolute(dfh.z))/dfh.r
         #theta
-        dfh['rz'] = np.arctan2(dfh.r, dfh.z)
+        dfh['zr'] = np.arctan2(dfh.z, dfh.r)
         rr = dfh['r']/1000      
 
         for loop in range(len(self.model_parameters[2])):
@@ -98,7 +107,8 @@ class Clusterer(object):
                     dfh['z3'] = np.log1p(np.absolute(dfh.zshift/dfh.r))*np.sign(dfh.zshift)
 
                     dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
-
+                    dfh['t1'] = dfh['a0'] - np.pi*(ii/STEPS) 
+                    dfh['r0'] = dfh.r/np.cos(dfh.t1) 
                     # parameter space
                     dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
                     dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
@@ -376,8 +386,9 @@ def predict_event(event_id, hits, train_or_test, truth):
     model_parameters = []
     model_parameters.append(FEATURE_MATRIX)
     model_parameters.append(SCALED_DISTANCE)
-    #model_parameters.append([1, -1, 3, -3, 4, -4, 6, -6, 9, -9, 12, -12, 15, -15, 20, -20, 25, -25])
     model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6, -10, 2, 8, -2])
+    model_parameters.append([3])
+    
     print_info(1, model_parameters)      
     labels_helix1 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix1', model_parameters)
     
@@ -385,17 +396,48 @@ def predict_event(event_id, hits, train_or_test, truth):
     model_parameters.clear()
     model_parameters.append(FEATURE_MATRIX_2)
     model_parameters.append(SCALED_DISTANCE_2)
-    #model_parameters.append([1, -1, 3, -3, 4, -4, 6, -6, 9, -9, 12, -12, 15, -15, 20, -20, 25, -25])
     model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6, -10, 2, 8, -2])
+    model_parameters.append([3])
+    
     print_info(2, model_parameters)
     # Running helix2 in 2 phases hurts our score, so do a single-phase only
     labels_helix2 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix2', model_parameters, one_phase_only=True)
 
-    
+    model_parameters.clear()
+    model_parameters.append(FEATURE_MATRIX_3)
+    model_parameters.append(SCALED_DISTANCE_3)
+    #model_parameters.append([1, -1, 3, -3, 4, -4, 6, -6, 9, -9, 12, -12, 15, -15, 20, -20, 25, -25])
+    model_parameters.append([3])
+    print_info(3, model_parameters)
+    # Running helix2 in 2 phases hurts our score, so do a single-phase only
+    labels_helix3 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix3', model_parameters, one_phase_only=True)
 
+    model_parameters.clear()
+    model_parameters.append(FEATURE_MATRIX_4)
+    model_parameters.append(SCALED_DISTANCE_4)
+    model_parameters.append([-1])
+    print_info(4, model_parameters)
+    # Running helix2 in 2 phases hurts our score, so do a single-phase only
+    labels_helix4 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix4', model_parameters, one_phase_only=True)
+
+    model_parameters.clear()
+    model_parameters.append(FEATURE_MATRIX_5)
+    model_parameters.append(SCALED_DISTANCE_5)
+    model_parameters.append([2])
+    print_info(4, model_parameters)
+    # Running helix2 in 2 phases hurts our score, so do a single-phase only
+    labels_helix5 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix5', model_parameters, one_phase_only=True)
+
+    
+    
     # Merge results from two sets of predictions, removing outliers first
     labels_helix1 = merge.remove_outliers(labels_helix1, hits, print_counts=False)
     labels_helix2 = merge.remove_outliers(labels_helix2, hits, print_counts=False)
+    labels_helix3 = merge.remove_outliers(labels_helix3, hits, print_counts=False)
+    labels_helix4 = merge.remove_outliers(labels_helix4, hits, print_counts=False)
+    labels_helix5 = merge.remove_outliers(labels_helix5, hits, print_counts=False)
+    
+    
 
     if truth is not None:
         one_submission = create_one_event_submission(event_id, hits, labels_helix1)
@@ -406,12 +448,47 @@ def predict_event(event_id, hits, train_or_test, truth):
         score = score_event(truth, one_submission)
         print("After outlier removal helix2 %d: %.8f" % (event_id, score))
 
+        one_submission = create_one_event_submission(event_id, hits, labels_helix3)
+        score = score_event(truth, one_submission)
+        print("After outlier removal helix3 %d: %.8f" % (event_id, score))
+
+        one_submission = create_one_event_submission(event_id, hits, labels_helix4)
+        score = score_event(truth, one_submission)
+        print("After outlier removal helix4 %d: %.8f" % (event_id, score))
+
+        one_submission = create_one_event_submission(event_id, hits, labels_helix5)
+        score = score_event(truth, one_submission)
+        print("After outlier removal helix5 %d: %.8f" % (event_id, score))
+
         
     labels = merge.heuristic_merge_tracks(labels_helix1, labels_helix2, hits, overwrite_limit=6, print_summary=False)
+
     if truth is not None:
         one_submission = create_one_event_submission(event_id, hits, labels)
         score = score_event(truth, one_submission)
         print("Merged helix1&2 unrolling for event %d: %.8f" % (event_id, score))
+
+    labels = merge.heuristic_merge_tracks(labels, labels_helix3, hits, overwrite_limit=6, print_summary=False)
+    
+    if truth is not None:
+        one_submission = create_one_event_submission(event_id, hits, labels)
+        score = score_event(truth, one_submission)
+        print("Merged helix1&2&3 unrolling for event %d: %.8f" % (event_id, score))
+
+    labels = merge.heuristic_merge_tracks(labels, labels_helix4, hits, overwrite_limit=6, print_summary=False)
+    
+    if truth is not None:
+        one_submission = create_one_event_submission(event_id, hits, labels)
+        score = score_event(truth, one_submission)
+        print("Merged helix1&2&3&4 unrolling for event %d: %.8f" % (event_id, score))
+
+    labels = merge.heuristic_merge_tracks(labels, labels_helix5, hits, overwrite_limit=6, print_summary=False)
+    
+    if truth is not None:
+        one_submission = create_one_event_submission(event_id, hits, labels)
+        score = score_event(truth, one_submission)
+        print("Merged helix1&2&3&4&5 unrolling for event %d: %.8f" % (event_id, score))
+
 
     labels = free.assign_free_hits(labels, hits)
     if truth is not None:
