@@ -235,8 +235,8 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
                 # If desired, extend tracks
                 if track_extension_limits is not None:
                     num_neighbours = 18
-                    #if one_phase_only:
-                    #    num_neighbours = 25
+                    if one_phase_only:
+                        num_neighbours = 25
                     labels_full[i] = xtnd.do_all_track_extensions(labels_full[i], all_hits, track_extension_limits, num_neighbours)
                     labels_full[i] = merge.renumber_labels(labels_full[i])
                 
