@@ -1,4 +1,5 @@
 import numpy as np
+import time as time
 from sklearn.neighbors import KDTree
 import collections as coll
 import track_score as score
@@ -13,33 +14,21 @@ def extend_submission(iter, submissions, hits, do_swap=False, limit=0.04):
     df = extend(iter, df, do_swap, limit)
     return df[['event_id', 'hit_id', 'track_id']]       
     
-def _one_cone_slice(df, angle, delta_angle, limit=0.04, num_neighbours=18, use_scoring=False):
-
-    df1 = df.loc[(df.arctan2>(angle - delta_angle)/180*np.pi) & (df.arctan2<(angle + delta_angle)/180*np.pi)]
+def _one_cone_slice(df, df1, angle, delta_angle, limit=0.04, num_neighbours=18, use_scoring=False):
 
     min_num_neighbours = len(df1)
     if min_num_neighbours < 3: 
         return df
 
     hit_ids = df1.hit_id.values
-    x,y,z = df1[['x', 'y', 'z']].values.T
-    r  = (x**2 + y**2)**0.5
-    r  = r/1000
-    a  = np.arctan2(y,x)
-    c = np.cos(a)
-    s = np.sin(a)
-    tree = KDTree(np.column_stack([c,s,r]), metric='euclidean')
+    a,c,s,r,zr,z = df1[['a', 'c', 's', 'r_norm', 'zr', 'z']].values.T
+    tree = KDTree(np.column_stack([c,s,r,zr]), metric='euclidean')
 
     track_ids = list(df1.track_id.unique())
     num_track_ids = len(track_ids)
     min_length=2
 
     labels = df.track_id.values
-    count_good = 0
-    count_bad = 0
-    count_outlier_correct = 0
-    count_outlier_wrong = 0
-
     label_track_counts = coll.Counter(df1.track_id.values).most_common(num_track_ids)
     
     for track_count in label_track_counts:
@@ -75,6 +64,8 @@ def _one_cone_slice(df, angle, delta_angle, limit=0.04, num_neighbours=18, use_s
         c1 = c[idx1]
         s0 = s[idx0]
         s1 = s[idx1]
+        zr0 = zr[idx0]
+        zr1 = zr[idx1]
 
         da0 = a[idx[1]] - a[idx[0]]  #direction
         dr0 = r[idx[1]] - r[idx[0]]
@@ -85,7 +76,7 @@ def _one_cone_slice(df, angle, delta_angle, limit=0.04, num_neighbours=18, use_s
         direction1 = np.arctan2(dr1,da1)
 
         ## extend start point
-        ns = tree.query([[c0, s0, r0]], k=min(num_neighbours, min_num_neighbours), return_distance=False)
+        ns = tree.query([[c0, s0, r0, zr0]], k=min(num_neighbours, min_num_neighbours), return_distance=False)
         ns = np.concatenate(ns)
 
         direction = np.arctan2(r0 - r[ns], a0 - a[ns])
@@ -123,7 +114,7 @@ def _one_cone_slice(df, angle, delta_angle, limit=0.04, num_neighbours=18, use_s
 
 
         ## extend end point
-        ns = tree.query([[c1, s1, r1]], k=min(num_neighbours, min_num_neighbours), return_distance=False)
+        ns = tree.query([[c1, s1, r1, zr1]], k=min(num_neighbours, min_num_neighbours), return_distance=False)
         ns = np.concatenate(ns)
 
         direction = np.arctan2(r[ns] - r1, a[ns] - a1)
@@ -164,15 +155,28 @@ def _one_cone_slice(df, angle, delta_angle, limit=0.04, num_neighbours=18, use_s
 
     return df
 
-def extend(iter, df, do_swap=False, limit=0.04):
+def do_all_track_extensions(labels, hits, track_extension_limits, num_neighbours=18):
+    time1 = time.time()
+    df = hits.copy(deep=True)
+    df['track_id'] = labels.tolist()
+    df['r'] = np.sqrt(df.x**2 + df.y**2)
+    df['r_norm'] = df.r / 1000
+    df['zr'] = df.z / df.r
+    df['arctan2'] = np.arctan2(df.z, df.r)
+    for ix, limit in enumerate(track_extension_limits):
+        df = extend(ix, df, do_swap=(ix%2==1), limit=(limit), num_neighbours=num_neighbours)
+    time2 = time.time()
+    print('Track extension took {:.3f} ms'.format((time2-time1)*1000.0))
+    return df.track_id.values
+
+def extend(iter, df, do_swap=False, limit=0.04, num_neighbours=18):
     if do_swap:
         df = df.assign(x = -df.x)
         df = df.assign(y = -df.y)
 
-    df = df.assign(d = np.sqrt( df.x**2 + df.y**2 + df.z**2 ))
-    df = df.assign(r = np.sqrt( df.x**2 + df.y**2))
-    df = df.assign(arctan2 = np.arctan2(df.z, df.r))
-    df = df.assign(zr = df.z / df.r)
+    df['a'] = np.arctan2(df.y, df.x)
+    df['c'] = np.cos(df.a)
+    df['s'] = np.sin(df.a)
 
     for angle in range(-90,90,1):
 
@@ -182,12 +186,16 @@ def extend(iter, df, do_swap=False, limit=0.04):
         num_hits = len(df1)
         # Dynamically adjust the delta based on how many hits are found
         if num_hits > 2000:
-            df = _one_cone_slice(df, angle-0.6, 0.4, limit)
-            df = _one_cone_slice(df, angle-0.2, 0.4, limit)
-            df = _one_cone_slice(df, angle+0.2, 0.4, limit)
-            df = _one_cone_slice(df, angle+0.6, 0.4, limit)
+            df1 = df.loc[(df.arctan2>(angle - 0.6 - 0.4)/180*np.pi) & (df.arctan2<(angle -0.6 + 0.4)/180*np.pi)]
+            df = _one_cone_slice(df, df1, angle-0.6, 0.4, limit, num_neighbours)
+            df1 = df.loc[(df.arctan2>(angle - 0.2 - 0.4)/180*np.pi) & (df.arctan2<(angle -0.2 + 0.4)/180*np.pi)]
+            df = _one_cone_slice(df, df1, angle-0.2, 0.4, limit, num_neighbours)
+            df1 = df.loc[(df.arctan2>(angle + 0.2 - 0.4)/180*np.pi) & (df.arctan2<(angle +0.2 + 0.4)/180*np.pi)]
+            df = _one_cone_slice(df, df1, angle+0.2, 0.4, limit, num_neighbours)
+            df1 = df.loc[(df.arctan2>(angle + 0.6 - 0.4)/180*np.pi) & (df.arctan2<(angle +0.6 + 0.4)/180*np.pi)]
+            df = _one_cone_slice(df, df1, angle+0.6, 0.4, limit, num_neighbours)
         else:
-            df = _one_cone_slice(df, angle, 1, limit)
+            df = _one_cone_slice(df, df1, angle, 1, limit, num_neighbours)
            
     return df
 

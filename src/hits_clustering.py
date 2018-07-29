@@ -17,10 +17,11 @@ import argparse
 import seeds as sd
 import collections as coll
 import math
-from extension import extend_submission, extend_labels
+import extension as xtnd
 import cone_slicing as cone
 import merge as merge
 import free_hits as free
+import straight_tracks as strt
 
 INPUT_PATH = '../../input'
 
@@ -154,7 +155,13 @@ def create_one_event_submission(event_id, hits, labels):
     submission = pd.DataFrame(data=sub_data, columns=["event_id", "hit_id", "track_id"]).astype(int)
     return submission
 
-def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_root, unmatched_only=True, filter_hits=True, track_extension_limits=None, merge_overwrite_limit=4):
+def display_score(event_id, hits, labels, truth, message):
+    if truth is not None:
+        one_submission = create_one_event_submission(event_id, hits, labels)
+        score = score_event(truth, one_submission)
+        print(message + "%d: %.8f" % (event_id, score))
+
+def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_root, unmatched_only=True, filter_hits=True, track_extension_limits=None, merge_overwrite_limit=4, one_phase_only=False):
     """ Run a round of predictions on all or a subset of remaining hits.
     Parameters:
       all_labels: Input np array of labeled tracks, where the index in all_labels matches
@@ -196,19 +203,15 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
         if os.path.exists(label_file):
             print('Loading dbscan loop ' + str(i+1) + ' processed file: ' + label_file)
             labels_full.append(pd.read_csv(label_file).label.values)
-            if truth is not None:
-                one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
-                score = score_event(truth, one_submission)
-                print("Processed dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
+            message = 'Processed dbscan loop ' + str(i+1) + ' score for event '
+            display_score(event_id, all_hits, labels_full[i], truth, message)
         else:
             label_file_extend = label_file_root + '_dbscan' + str(i+1) + '_extend.csv'
             if os.path.exists(label_file_extend):
                 print('Loading dbscan loop ' + str(i+1) + ' processed file: ' + label_file_extend)
                 labels_full.append(pd.read_csv(label_file_extend).label.values)
-                if truth is not None:
-                    one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
-                    score = score_event(truth, one_submission)
-                    print("Processed extended dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
+                message = 'Processed extended dbscan loop ' + str(i+1) + ' score for event '
+                display_score(event_id, all_hits, labels_full[i], truth, message)
             else:
                 labels_subset[i] = merge.renumber_labels(labels_subset[i])
 
@@ -226,26 +229,19 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
                 else:
                     labels_full.append(np.copy(labels_subset[i]))
 
-                if truth is not None:
-                    one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
-                    score = score_event(truth, one_submission)
-                    print("Unfiltered dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
+                message = 'Unfiltered dbscan loop ' + str(i+1) + ' score for event '
+                display_score(event_id, all_hits, labels_full[i], truth, message)
 
                 # If desired, extend tracks
                 if track_extension_limits is not None:
-                    for ix, limit in enumerate(track_extension_limits):
-                        labels_full[i] = extend_labels(ix, labels_full[i], all_hits, do_swap=(ix%2==1), limit=(limit))
-                        if False and truth is not None:
-                            one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
-                            score = score_event(truth, one_submission)
-                            print("Extension %d loop %d score for event %d: %.8f" % (ix,i+1,event_id, score))
-                    
+                    num_neighbours = 18
+                    #if one_phase_only:
+                    #    num_neighbours = 25
+                    labels_full[i] = xtnd.do_all_track_extensions(labels_full[i], all_hits, track_extension_limits, num_neighbours)
                     labels_full[i] = merge.renumber_labels(labels_full[i])
                 
-                    if truth is not None:
-                        one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
-                        score = score_event(truth, one_submission)
-                        print("Unfiltered extended dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
+                    message = 'Unfiltered extended dbscan loop ' + str(i+1) + ' score for event '
+                    display_score(event_id, all_hits, labels_full[i], truth, message)
                 else:
                     labels_full[i] = merge.renumber_labels(labels_full[i])
 
@@ -260,10 +256,8 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
                 labels_full[i] = merge.remove_outliers(labels_full[i], all_hits, smallest_track_size=6, print_counts=False)
                 labels_full[i] = merge.renumber_labels(labels_full[i])
 
-                if truth is not None:
-                    one_submission = create_one_event_submission(event_id, all_hits, labels_full[i])
-                    score = score_event(truth, one_submission)
-                    print("Filtered non-outlier dbscan loop %d score for event %d: %.8f" % (i+1,event_id, score))
+                message = 'Filtered non-outlier dbscan loop ' + str(i+1) + ' score for event '
+                display_score(event_id, all_hits, labels_full[i], truth, message)
             # Save the predicted tracks to a file so we don't need to re-calculate next time.
             df = pd.DataFrame(labels_full[i])
             df.to_csv(label_file, index=False, header=['label'])
@@ -281,20 +275,15 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
             # since we have relatively few tracks already, and removing even small tracks hurts.
             if merge_count % 3 == 0 and not unmatched_only:
                 (labels_merged, _) = merge.remove_small_tracks(labels_merged, smallest_track_size=3)
-            if truth is not None:
-                one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
-                score = score_event(truth, one_submission)
-                print("Merged loop 1-%d score for event %d: %.8f" % (i+1,event_id, score))
+            message = 'Merged loop 1-' + str(i+1) + ' score for event '
+            display_score(event_id, all_hits, labels_merged, truth, message)
 
     # If we merged the unmatched hits only, we now need to merge those with the full
     # set of tracks from a previous phase. We assume the previous phase (all_labels)
     # has a much stronger set of tracks, so those should be listed first on the merge.
     if unmatched_only:
         labels_merged = merge.heuristic_merge_tracks(all_labels, labels_merged, all_hits, overwrite_limit=merge_overwrite_limit, print_summary=False)
-        if truth is not None:
-            one_submission = create_one_event_submission(event_id, all_hits, labels_merged)
-            score = score_event(truth, one_submission)
-            print("Final merged loop 1 score for event %d: %.8f" % (event_id, score))
+        display_score(event_id, all_hits, labels_merged, truth, 'Final merged loop 1 score for event ')
 
     return (labels_merged)
 
@@ -306,10 +295,7 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
     if os.path.exists(label_file):
         print(str(event_id) + ': load ' + label_file)
         labels = pd.read_csv(label_file).label.values
-        if truth is not None:
-            one_submission = create_one_event_submission(event_id, hits, labels)
-            score = score_event(truth, one_submission)
-            print("Loaded score for event %d: %.8f" % (event_id, score))
+        display_score(event_id, hits, labels, truth, 'Loaded score for event ')
         return labels
 
     print(str(event_id) + ': clustering on ' + label_identifier)
@@ -318,30 +304,20 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
     
     # For the first run, we do not have an input array of labels/tracks.
     label_file_root1 = label_file_root + '_phase1'
-    (labels) = run_predictions(event_id, None, hits, truth, model, label_file_root1, unmatched_only=False, filter_hits=True, track_extension_limits=EXTENSION_STANDARD_LIMITS)
-
-    if truth is not None:
-        # Score for the event
-        one_submission = create_one_event_submission(event_id, hits, labels)
-        score = score_event(truth, one_submission)
-        print("Filtered 1st pass score for event %d: %.8f" % (event_id, score))
+    (labels) = run_predictions(event_id, None, hits, truth, model, label_file_root1, unmatched_only=False, filter_hits=True, track_extension_limits=EXTENSION_STANDARD_LIMITS, one_phase_only=one_phase_only)
+    display_score(event_id, hits, labels, truth, 'Filtered 1st pass score for event ')
 
     if not one_phase_only:
         label_file_root2 = label_file_root + '_phase2'
         model = Clusterer(model_parameters)
         (labels) = run_predictions(event_id, labels, hits, truth, model, label_file_root2, unmatched_only=True, filter_hits=False, track_extension_limits=EXTENSION_STANDARD_LIMITS)
+        display_score(event_id, hits, labels, truth, '2nd pass score for event ')
 
-        if truth is not None:
-            # Score for the event
-            one_submission = create_one_event_submission(event_id, hits, labels)
-            score = score_event(truth, one_submission)
-            print("2nd pass score for event %d: %.8f" % (event_id, score))
-
-            # Un-comment this if you want to see the quality of the seeds generated.
-            #seed_length = 5
-            #my_volumes = [7, 8, 9]
-            #labels = sd.filter_invalid_tracks(labels, hits, my_volumes, seed_length)
-            #sd.count_truth_track_seed_hits(labels, truth, seed_length, print_results=True)
+        # Un-comment this if you want to see the quality of the seeds generated.
+        #seed_length = 5
+        #my_volumes = [7, 8, 9]
+        #labels = sd.filter_invalid_tracks(labels, hits, my_volumes, seed_length)
+        #sd.count_truth_track_seed_hits(labels, truth, seed_length, print_results=True)
 
     df = pd.DataFrame(labels)
     df.to_csv(label_file, index=False, header=['label'])
@@ -349,15 +325,9 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
     # label_file_root3 = label_file_root + '_phase3'
     # model = Clusterer(model_parameters)
     # (labels) = run_predictions(event_id, labels, hits, truth, model, label_file_root3, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
+    # display_score(event_id, hits, labels, truth, '3rd pass score for event ')
 
     # # Save the generated labels, can avoid re-generation next run.
-
-
-    # # Score for the event
-    # if truth is not None:
-    #     one_submission = create_one_event_submission(event_id, hits, labels)
-    #     score = score_event(truth, one_submission)
-    #     print("3rd pass score for event %d: %.8f" % (event_id, score))
 
     return labels
 
@@ -409,7 +379,6 @@ def predict_event(event_id, hits, train_or_test, truth):
     #model_parameters.append([1, -1, 3, -3, 4, -4, 6, -6, 9, -9, 12, -12, 15, -15, 20, -20, 25, -25])
     model_parameters.append([3])
     print_info(3, model_parameters)
-    # Running helix2 in 2 phases hurts our score, so do a single-phase only
     labels_helix3 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix3', model_parameters, one_phase_only=True)
 
     model_parameters.clear()
@@ -417,15 +386,13 @@ def predict_event(event_id, hits, train_or_test, truth):
     model_parameters.append(SCALED_DISTANCE_4)
     model_parameters.append([-1])
     print_info(4, model_parameters)
-    # Running helix2 in 2 phases hurts our score, so do a single-phase only
     labels_helix4 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix4', model_parameters, one_phase_only=True)
 
     model_parameters.clear()
     model_parameters.append(FEATURE_MATRIX_5)
     model_parameters.append(SCALED_DISTANCE_5)
     model_parameters.append([2])
-    print_info(4, model_parameters)
-    # Running helix2 in 2 phases hurts our score, so do a single-phase only
+    print_info(5, model_parameters)
     labels_helix5 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix5', model_parameters, one_phase_only=True)
 
     
@@ -437,64 +404,32 @@ def predict_event(event_id, hits, train_or_test, truth):
     labels_helix4 = merge.remove_outliers(labels_helix4, hits, print_counts=False)
     labels_helix5 = merge.remove_outliers(labels_helix5, hits, print_counts=False)
     
-    
+    display_score(event_id, hits, labels_helix1, truth, 'After outlier removal helix1 ')
+    display_score(event_id, hits, labels_helix2, truth, 'After outlier removal helix2 ')
+    display_score(event_id, hits, labels_helix3, truth, 'After outlier removal helix3 ')
+    display_score(event_id, hits, labels_helix4, truth, 'After outlier removal helix4 ')
+    display_score(event_id, hits, labels_helix4, truth, 'After outlier removal helix5 ')
 
-    if truth is not None:
-        one_submission = create_one_event_submission(event_id, hits, labels_helix1)
-        score = score_event(truth, one_submission)
-        print("After outlier removal helix1 %d: %.8f" % (event_id, score))
-        
-        one_submission = create_one_event_submission(event_id, hits, labels_helix2)
-        score = score_event(truth, one_submission)
-        print("After outlier removal helix2 %d: %.8f" % (event_id, score))
 
-        one_submission = create_one_event_submission(event_id, hits, labels_helix3)
-        score = score_event(truth, one_submission)
-        print("After outlier removal helix3 %d: %.8f" % (event_id, score))
-
-        one_submission = create_one_event_submission(event_id, hits, labels_helix4)
-        score = score_event(truth, one_submission)
-        print("After outlier removal helix4 %d: %.8f" % (event_id, score))
-
-        one_submission = create_one_event_submission(event_id, hits, labels_helix5)
-        score = score_event(truth, one_submission)
-        print("After outlier removal helix5 %d: %.8f" % (event_id, score))
-
-        
     labels = merge.heuristic_merge_tracks(labels_helix1, labels_helix2, hits, overwrite_limit=6, print_summary=False)
-
-    if truth is not None:
-        one_submission = create_one_event_submission(event_id, hits, labels)
-        score = score_event(truth, one_submission)
-        print("Merged helix1&2 unrolling for event %d: %.8f" % (event_id, score))
+    display_score(event_id, hits, labels, truth, 'Merged helix1&2 unrolling for event ')
 
     labels = merge.heuristic_merge_tracks(labels, labels_helix3, hits, overwrite_limit=6, print_summary=False)
+    display_score(event_id, hits, labels, truth, 'Merged helix1&2&3 unrolling for event ')
     
-    if truth is not None:
-        one_submission = create_one_event_submission(event_id, hits, labels)
-        score = score_event(truth, one_submission)
-        print("Merged helix1&2&3 unrolling for event %d: %.8f" % (event_id, score))
-
     labels = merge.heuristic_merge_tracks(labels, labels_helix4, hits, overwrite_limit=6, print_summary=False)
-    
-    if truth is not None:
-        one_submission = create_one_event_submission(event_id, hits, labels)
-        score = score_event(truth, one_submission)
-        print("Merged helix1&2&3&4 unrolling for event %d: %.8f" % (event_id, score))
+    display_score(event_id, hits, labels, truth, 'Merged helix1&2&3&4 unrolling for event ')
 
     labels = merge.heuristic_merge_tracks(labels, labels_helix5, hits, overwrite_limit=6, print_summary=False)
-    
-    if truth is not None:
-        one_submission = create_one_event_submission(event_id, hits, labels)
-        score = score_event(truth, one_submission)
-        print("Merged helix1&2&3&4&5 unrolling for event %d: %.8f" % (event_id, score))
+    display_score(event_id, hits, labels, truth, 'Merged helix1&2&3&4&5 unrolling for event ')
+
+
+    labels = strt.extend_straight_tracks(labels, hits)
+    display_score(event_id, hits, labels, truth, 'Merged helix1&2&3&4&5 unrolling straight-extended for event ')
 
 
     labels = free.assign_free_hits(labels, hits)
-    if truth is not None:
-        one_submission = create_one_event_submission(event_id, hits, labels)
-        score = score_event(truth, one_submission)
-        print("Merged free-hit-reassigned score for event %d: %.8f" % (event_id, score))
+    display_score(event_id, hits, labels, truth, 'Merged free-hit-reassigned score for event ')
 
 
     return labels
