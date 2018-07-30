@@ -37,9 +37,11 @@ FEATURE_MATRIX_3 = ['sina1','cosa1', 'zr', 'z1']
 SCALED_DISTANCE_4 = [1,       1, 0.5, 0.25]
 FEATURE_MATRIX_4 = ['sina1','cosa1', 'zr', 'z3']
 
-
 SCALED_DISTANCE_5 = [1, 1, 0.5, 0.25, 0.008, 0.008, 0.00175, 0.00175]
 FEATURE_MATRIX_5 = ['sina1', 'cosa1', 'r0', 'z3', 'xd', 'yd', 'px', 'py']
+
+SCALED_DISTANCE_6 = [1,       1,       0.5]
+FEATURE_MATRIX_6 = ['sina1', 'cosa1', 'z3']
 
 
 STEPRR = 0.03
@@ -50,6 +52,13 @@ EXTENSION_STANDARD_LIMITS = [0.02, 0.04, 0.06, 0.08, 0.10]
 EXTENSION_LIGHT_LIMITS = [0.03, 0.07]
 
 DBSCAN_EPS = 0.0033
+# using radius of every hit to approximate the angle between y-axis and 
+# the closest approach to the centre of helix
+HELIX_UNROLL_R_MODE = 'Radius mode'
+# using different r0 of every helix to guess the helix angle between y-axis and
+# the closest approach to the centre of helix 
+HELIX_UNROLL_R0_MODE = 'R0 mode'
+
 
 print ('########################################################################')
 
@@ -65,9 +74,20 @@ print ('#######################################################################'
 class Clusterer(object):
     def __init__(self, model_parameters):                        
         self.model_parameters = model_parameters
+    def _get_samples(self, num_samples, linear_samples_percent=1, linear_min=4000, linear_max=10000, abs_normal_mean=600, max_normal_value=5000):
+        results = np.zeros(num_samples)
+        num_linear = math.floor(num_samples*(linear_samples_percent/100))
+        results[0:num_linear] = np.linspace(linear_min, linear_max, num=num_linear, endpoint=True, dtype=np.float32)
+        num_normal = num_samples - num_linear
+        mu = 0
+        sigma = 0.25
+        results[num_linear:] = np.abs(np.random.normal(mu, sigma, num_normal))
+        results[num_linear:] = (results[num_linear:] * (max_normal_value - abs_normal_mean)) + abs_normal_mean
+        return results
 
     def _dbscan(self, dfh, label_file_root):
         labels = []
+        r0_list = []
 
         dfh['d'] = np.sqrt(dfh.x**2+dfh.y**2+dfh.z**2)
         dfh['r'] = np.sqrt(dfh.x**2+dfh.y**2)
@@ -76,7 +96,10 @@ class Clusterer(object):
         dfh['zr'] = np.arctan2(dfh.z, dfh.r)
         rr = dfh['r']/1000      
 
-        for loop in range(len(self.model_parameters[2])):
+        if self.model_parameters[0] is HELIX_UNROLL_R0_MODE:
+            r0_list = self._get_samples(1000)
+            
+        for loop in range(len(self.model_parameters[3])):
             label_file = label_file_root + '_dbscan' + str(loop+1) + '.csv'
             if os.path.exists(label_file):
                 print('Loading dbscan loop ' + str(loop+1) + ' file: ' + label_file)
@@ -100,43 +123,82 @@ class Clusterer(object):
                     dfh['yd'] = -dfh.x/dfh['d']
 
                 # Main DBSCAN loop. Longest-track-wins merging at each step.
-                for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
-                    print ('\r steps: %d '%ii, end='',flush=True)
-                    dfh['zshift'] = dfh.z + self.model_parameters[2][loop]
-                    dfh['z1'] = dfh.zshift/dfh['r'] 
-                    dfh['z2'] = dfh.zshift/dfh['d']
-                    dfh['z3'] = np.log1p(np.absolute(dfh.zshift/dfh.r))*np.sign(dfh.zshift)
+                dfh['zshift'] = dfh.z + self.model_parameters[3][loop]
+                dfh['z1'] = dfh.zshift/dfh['r'] 
+                dfh['z2'] = dfh.zshift/dfh['d']
+                dfh['z3'] = np.log1p(np.absolute(dfh.zshift/dfh.r))*np.sign(dfh.zshift)
 
-                    dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
-                    dfh['t1'] = dfh['a0'] - np.pi*(ii/STEPS) 
-                    dfh['r0'] = dfh.r/np.cos(dfh.t1) 
-                    # parameter space
-                    dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
-                    dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
+                # r0 loop 
+                if self.model_parameters[0] is HELIX_UNROLL_R0_MODE:
+                    for ii, r0 in enumerate(tqdm(r0_list)):
+                        print ('\r steps: %d '%ii, end='',flush=True)
                     
-                    dfh['sina1'] = np.sin(dfh['a1'])
-                    dfh['cosa1'] = np.cos(dfh['a1'])
+                        dfh['cos_theta'] = dfh.r/2/r0
+                        r_inv = np.asarray(dfh['cos_theta'].values.astype(float))
+                        r_inv_upd_ix = np.where(np.abs(r_inv) > 1 )[0]
+                        r_inv[r_inv_upd_ix] = 1
+
+                        dfh['a1'] = dfh['a0'] - np.arccos(dfh['cos_theta'])
+                        
+                        dfh['sina1'] = np.sin(dfh['a1'])
+                        dfh['cosa1'] = np.cos(dfh['a1'])
+                        
+                        ss = StandardScaler()
                     
-                    ss = StandardScaler()
+                        dfs = ss.fit_transform(dfh[self.model_parameters[1]].values)
+                        dfs = np.multiply(dfs, self.model_parameters[2])
                 
-                    dfs = ss.fit_transform(dfh[self.model_parameters[0]].values)
-                    dfs = np.multiply(dfs, self.model_parameters[1])
-            
-                    self.clusters = DBSCAN(eps=DBSCAN_EPS  + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+                        self.clusters = DBSCAN(eps=DBSCAN_EPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
 
-                    if ii == -STEPS:
-                        dfh['s1'] = self.clusters
-                        dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-                    else:
-                        dfh['s2'] = self.clusters
-                        dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
-                        maxs1 = dfh['s1'].max()
-                        cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
-                        s1 = dfh['s1'].values
-                        s1[cond] = dfh['s2'].values[cond]+maxs1
-                        dfh['s1'] = s1
-                        dfh['s1'] = dfh['s1'].astype('int64')
-                        dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+                        if ii == 0:
+                            dfh['s1'] = self.clusters
+                            dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+                        else:
+                            dfh['s2'] = self.clusters
+                            dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
+                            maxs1 = dfh['s1'].max()
+                            cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
+                            s1 = dfh['s1'].values
+                            s1[cond] = dfh['s2'].values[cond]+maxs1
+                            dfh['s1'] = s1
+                            dfh['s1'] = dfh['s1'].astype('int64')
+                            dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+
+                #r mode
+                else:
+                    for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
+                        print ('\r steps: %d '%ii, end='',flush=True)
+                       
+                        dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
+                        dfh['t1'] = dfh['a0'] - np.pi*(ii/STEPS) 
+                        dfh['r0'] = dfh.r/np.cos(dfh.t1) 
+                        # parameter space
+                        dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
+                        dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
+                        
+                        dfh['sina1'] = np.sin(dfh['a1'])
+                        dfh['cosa1'] = np.cos(dfh['a1'])
+                        
+                        ss = StandardScaler()
+                    
+                        dfs = ss.fit_transform(dfh[self.model_parameters[1]].values)
+                        dfs = np.multiply(dfs, self.model_parameters[2])
+                
+                        self.clusters = DBSCAN(eps=DBSCAN_EPS  + ii*STEPEPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+
+                        if ii == -STEPS:
+                            dfh['s1'] = self.clusters
+                            dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+                        else:
+                            dfh['s2'] = self.clusters
+                            dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
+                            maxs1 = dfh['s1'].max()
+                            cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
+                            s1 = dfh['s1'].values
+                            s1[cond] = dfh['s2'].values[cond]+maxs1
+                            dfh['s1'] = s1
+                            dfh['s1'] = dfh['s1'].astype('int64')
+                            dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
 
                 # Save the predicted tracks to a file so we don't need to re-calculate next time.
                 labels.append(np.copy(dfh['s1'].values))
@@ -332,12 +394,14 @@ def run_helix_unrolling_predictions(event_id, hits, truth, label_identifier, mod
     return labels
 
 def print_info(helix_id, model_parameters):
-    feature_matrix = model_parameters[0]
-    scaled_distance = model_parameters[1]
-    z_shift_matrix = model_parameters[2]
+    unroll_mode = model_parameters[0]
+    feature_matrix = model_parameters[1]
+    scaled_distance = model_parameters[2]
+    z_shift_matrix = model_parameters[3]
 
     print('==========================================================================')
     print('Helix model: ' + str(helix_id))
+    print('Unroll mode: ' + str(unroll_mode))
     print('Feature matrix: ' + str(feature_matrix))
     print('Scaled distance: ' + str(scaled_distance))
     print('z shift matrix: ' + str(z_shift_matrix))
@@ -354,6 +418,7 @@ def predict_event(event_id, hits, train_or_test, truth):
 
     #The strongest model is  [3, 4, 10, -3]
     model_parameters = []
+    model_parameters.append(HELIX_UNROLL_R_MODE)
     model_parameters.append(FEATURE_MATRIX)
     model_parameters.append(SCALED_DISTANCE)
     model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6, -10, 2, 8, -2])
@@ -363,6 +428,7 @@ def predict_event(event_id, hits, train_or_test, truth):
     
 
     model_parameters.clear()
+    model_parameters.append(HELIX_UNROLL_R_MODE)
     model_parameters.append(FEATURE_MATRIX_2)
     model_parameters.append(SCALED_DISTANCE_2)
     model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6, -10, 2, 8, -2])
@@ -372,6 +438,7 @@ def predict_event(event_id, hits, train_or_test, truth):
     labels_helix2 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix2', model_parameters, one_phase_only=True)
 
     model_parameters.clear()
+    model_parameters.append(HELIX_UNROLL_R_MODE)
     model_parameters.append(FEATURE_MATRIX_3)
     model_parameters.append(SCALED_DISTANCE_3)
     #model_parameters.append([1, -1, 3, -3, 4, -4, 6, -6, 9, -9, 12, -12, 15, -15, 20, -20, 25, -25])
@@ -380,6 +447,7 @@ def predict_event(event_id, hits, train_or_test, truth):
     labels_helix3 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix3', model_parameters, one_phase_only=True)
 
     model_parameters.clear()
+    model_parameters.append(HELIX_UNROLL_R_MODE)
     model_parameters.append(FEATURE_MATRIX_4)
     model_parameters.append(SCALED_DISTANCE_4)
     model_parameters.append([-1])
@@ -387,6 +455,7 @@ def predict_event(event_id, hits, train_or_test, truth):
     labels_helix4 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix4', model_parameters, one_phase_only=True)
 
     model_parameters.clear()
+    model_parameters.append(HELIX_UNROLL_R_MODE)
     model_parameters.append(FEATURE_MATRIX_5)
     model_parameters.append(SCALED_DISTANCE_5)
     model_parameters.append([2])
@@ -394,19 +463,31 @@ def predict_event(event_id, hits, train_or_test, truth):
     labels_helix5 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix5', model_parameters, one_phase_only=True)
 
     
+    model_parameters.clear()
+    model_parameters.append(HELIX_UNROLL_R0_MODE)
+    model_parameters.append(FEATURE_MATRIX_6)
+    model_parameters.append(SCALED_DISTANCE_6)
+    model_parameters.append([3])
+    print_info(6, model_parameters)
+    labels_helix6 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix6', model_parameters, one_phase_only=True)
+
     
+
     # Merge results from two sets of predictions, removing outliers first
     labels_helix1 = merge.remove_outliers(labels_helix1, hits, print_counts=False)
     labels_helix2 = merge.remove_outliers(labels_helix2, hits, print_counts=False)
     labels_helix3 = merge.remove_outliers(labels_helix3, hits, print_counts=False)
     labels_helix4 = merge.remove_outliers(labels_helix4, hits, print_counts=False)
     labels_helix5 = merge.remove_outliers(labels_helix5, hits, print_counts=False)
+    labels_helix6 = merge.remove_outliers(labels_helix6, hits, print_counts=False)
+    
     
     display_score(event_id, hits, labels_helix1, truth, 'After outlier removal helix1 ')
     display_score(event_id, hits, labels_helix2, truth, 'After outlier removal helix2 ')
     display_score(event_id, hits, labels_helix3, truth, 'After outlier removal helix3 ')
     display_score(event_id, hits, labels_helix4, truth, 'After outlier removal helix4 ')
     display_score(event_id, hits, labels_helix5, truth, 'After outlier removal helix5 ')
+    display_score(event_id, hits, labels_helix6, truth, 'After outlier removal helix6 ')
 
 
     labels = merge.heuristic_merge_tracks(labels_helix1, labels_helix2, hits, overwrite_limit=6, print_summary=False)
@@ -421,9 +502,11 @@ def predict_event(event_id, hits, train_or_test, truth):
     labels = merge.heuristic_merge_tracks(labels, labels_helix5, hits, overwrite_limit=6, print_summary=False)
     display_score(event_id, hits, labels, truth, 'Merged helix1&2&3&4&5 unrolling for event ')
 
+    labels = merge.heuristic_merge_tracks(labels, labels_helix6, hits, overwrite_limit=6, print_summary=False)
+    display_score(event_id, hits, labels, truth, 'Merged helix1&2&3&4&5&6 unrolling for event ')
 
     labels = strt.extend_straight_tracks(labels, hits)
-    display_score(event_id, hits, labels, truth, 'Merged helix1&2&3&4&5 unrolling straight-extended for event ')
+    display_score(event_id, hits, labels, truth, 'Merged helix1&2&3&4&5&6 unrolling straight-extended for event ')
 
 
     labels = free.assign_free_hits(labels, hits)
