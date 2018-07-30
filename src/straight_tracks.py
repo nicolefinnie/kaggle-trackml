@@ -720,46 +720,6 @@ def compare_track_to_truth(track, labels, hits, truth):
         df3 = hits.loc[tdf2.index.values]
         dfx3 = df3[['x','y', 'z', 'zr', 'volume_id', 'layer_id']]
         print(dfx3)
-        
-# Solve for y = mx + b
-# def solve_single_linear_equation(val1, val2):
-#     x1 = val1[0]
-#     x2 = val2[0]
-#     y1 = val1[1]
-#     y2 = val2[1]
-#     is_valid = (x1 != x2 and y1 != y2)
-#     m = 0
-#     b = 0
-#     if is_valid:
-#         a = np.array([[x1, 1], [x2, 1]])
-#         b = np.array([y1, y2])
-#         sol = np.linalg.solve(a, b)
-#         m = sol[0]
-#         b = sol[1]
-#     return is_valid, m, b
-
-
-# def solve_linear_equation(vals):
-#     """Take average of y=mx+b slope across all pair-wise elements, as well as between
-#        first and last elements."""
-#     m = 0
-#     b = 0
-#     count = 0
-#     for i in range(len(vals) - 1):
-#         is_valid, m2, b2 = solve_single_linear_equation(vals[i], vals[i+1])
-#         if is_valid:
-#             count = count + 1
-#             m = m + m2
-#             b = b + b2
-#     is_valid, m2, b2 = solve_single_linear_equation(vals[0], vals[-1])
-#     if is_valid:
-#         count = count + 1
-#         m = m + m2
-#         b = b + b2
-#     if count > 1:
-#         m = m / count
-#         b = b / count
-#     return m, b
 
 def check_if_zr_straight(zr_values):
     if len(zr_values) < 3:
@@ -784,50 +744,16 @@ def check_if_zr_straight(zr_values):
 
 def is_straight_track(track, labels, hits):
     is_straight = 0
-    # Idea: Solve y=mx+b for each pair of hits, allow for a few outliers
-    # (one outlier will cause up to two bad values).
     hit_ix = np.where(labels == track)[0]
 
     if len(hit_ix) > 2:
         df = hits.loc[hit_ix]
         df = df.sort_values('z')
 
-        # Uncomment to get track_dims for plotting graph
-        #x,y,z,zr,v,azr = df[['x', 'y', 'z', 'zr', 'volume_id', 'azr' ]].values.astype(np.float32).T
-        #track_dims = np.column_stack((x, y, z/3))
         zr = df.zr.values
         (is_straight, num_outliers) = check_if_zr_straight(zr)
         # Allow a small number of outliers
         if not is_straight and num_outliers <= 2 and len(hit_ix) > 4:
             is_straight = 1
 
-    return is_straight #, track_dims --> when wanting to graph
-
-# def graph_my_track(track, labels, hits):
-#     hit_ix = np.where(labels == track)[0]
-#     df = hits.loc[hit_ix]
-#     df = df.sort_values('z')
-#     x,y,z = df[['x', 'y', 'z' ]].values.astype(np.float32).T
-#     track_dims = np.column_stack((x, y, z))
-#     draw_prediction_xyz([track_dims], [track_dims])
-
-# def draw_prediction_xyz(truth, predict):
-#     fig1 = plt.figure(figsize=(12,12))
-#     ax1  = fig1.add_subplot(111, projection='3d')
-#     fig1.patch.set_facecolor('white')
-#     ax1.set_xlabel('x', fontsize=16)
-#     ax1.set_ylabel('y', fontsize=16)
-#     ax1.set_zlabel('z', fontsize=16)
-
-#     predict_size = len(predict)
-#     #predict_size = 10
-#     for n in range(0,predict_size,1):
-#         x, y, z = truth[n].T
-#         ex, ey, ez = predict[n].T
-        
-#         color = np.random.uniform(0,1,3)
-#         ax1.plot(ex,ey,ez,'.-',color = [0.75,0.75,0.75], markersize=10)
-#         ax1.plot(x,y,z,'.-',color = color, markersize=5)
-#         plt.axis('equal')
-        
-
+    return is_straight
