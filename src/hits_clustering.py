@@ -40,7 +40,7 @@ FEATURE_MATRIX_4 = ['sina1','cosa1', 'zr', 'z3']
 SCALED_DISTANCE_5 = [1, 1, 0.5, 0.25, 0.008, 0.008, 0.00175, 0.00175]
 FEATURE_MATRIX_5 = ['sina1', 'cosa1', 'r0', 'z3', 'xd', 'yd', 'px', 'py']
 
-SCALED_DISTANCE_6 = [1,       1,       0.5]
+SCALED_DISTANCE_6 = [1,       1,       0.35]
 FEATURE_MATRIX_6 = ['sina1', 'cosa1', 'z3']
 
 
@@ -74,7 +74,7 @@ print ('#######################################################################'
 class Clusterer(object):
     def __init__(self, model_parameters):                        
         self.model_parameters = model_parameters
-    def _get_samples(self, num_samples, linear_samples_percent=1, linear_min=4000, linear_max=10000, abs_normal_mean=600, max_normal_value=5000):
+    def _get_samples(self, num_samples, linear_samples_percent=5, linear_min=4000, linear_max=50000, abs_normal_mean=100, max_normal_value=6000):
         results = np.zeros(num_samples)
         num_linear = math.floor(num_samples*(linear_samples_percent/100))
         results[0:num_linear] = np.linspace(linear_min, linear_max, num=num_linear, endpoint=True, dtype=np.float32)
@@ -83,6 +83,9 @@ class Clusterer(object):
         sigma = 0.25
         results[num_linear:] = np.abs(np.random.normal(mu, sigma, num_normal))
         results[num_linear:] = (results[num_linear:] * (max_normal_value - abs_normal_mean)) + abs_normal_mean
+        results.sort()
+        results = 1 / results
+        results[0] = 0 # make sure we have one 0 value
         return results
 
     def _dbscan(self, dfh, label_file_root):
@@ -97,7 +100,7 @@ class Clusterer(object):
         rr = dfh['r']/1000      
 
         if self.model_parameters[0] is HELIX_UNROLL_R0_MODE:
-            r0_list = self._get_samples(1000)
+            inv_r0_list = self._get_samples(1000)
             
         for loop in range(len(self.model_parameters[3])):
             label_file = label_file_root + '_dbscan' + str(loop+1) + '.csv'
@@ -130,21 +133,20 @@ class Clusterer(object):
 
                 # r0 loop 
                 if self.model_parameters[0] is HELIX_UNROLL_R0_MODE:
-                    for ii, r0 in enumerate(tqdm(r0_list)):
+                    for ii, inv_r0 in enumerate(tqdm(inv_r0_list)):
                         print ('\r steps: %d '%ii, end='',flush=True)
                     
-                        dfh['cos_theta'] = dfh.r/2/r0
+                        dfh['cos_theta'] = dfh.r/2*inv_r0
                         r_inv = np.asarray(dfh['cos_theta'].values.astype(float))
                         r_inv_upd_ix = np.where(np.abs(r_inv) > 1 )[0]
                         r_inv[r_inv_upd_ix] = 1
+                        dfh['cos_theta'] = r_inv
 
                         dfh['a1'] = dfh['a0'] - np.arccos(dfh['cos_theta'])
-                        
                         dfh['sina1'] = np.sin(dfh['a1'])
                         dfh['cosa1'] = np.cos(dfh['a1'])
                         
                         ss = StandardScaler()
-                    
                         dfs = ss.fit_transform(dfh[self.model_parameters[1]].values)
                         dfs = np.multiply(dfs, self.model_parameters[2])
                 
@@ -467,6 +469,7 @@ def predict_event(event_id, hits, train_or_test, truth):
     model_parameters.append(HELIX_UNROLL_R0_MODE)
     model_parameters.append(FEATURE_MATRIX_6)
     model_parameters.append(SCALED_DISTANCE_6)
+    #model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6, -10, 2, 8, -2])
     model_parameters.append([3])
     print_info(6, model_parameters)
     labels_helix6 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix6', model_parameters, one_phase_only=True)
