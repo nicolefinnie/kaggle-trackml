@@ -40,7 +40,7 @@ FEATURE_MATRIX_4 = ['sina1','cosa1', 'zr', 'z3']
 SCALED_DISTANCE_5 = [1, 1, 0.5, 0.25, 0.008, 0.008, 0.00175, 0.00175]
 FEATURE_MATRIX_5 = ['sina1', 'cosa1', 'r0', 'z3', 'xd', 'yd', 'px', 'py']
 
-SCALED_DISTANCE_6 = [1,       1,       0.35]
+SCALED_DISTANCE_6 = [1,       1,       0.5]
 FEATURE_MATRIX_6 = ['sina1', 'cosa1', 'z3']
 
 
@@ -81,34 +81,34 @@ class Clusterer(object):
         num_normal = num_samples - num_linear
         mu = 0
         sigma = 0.25
+        np.random.seed(42)
         results[num_linear:] = np.abs(np.random.normal(mu, sigma, num_normal))
         results[num_linear:] = (results[num_linear:] * (max_normal_value - abs_normal_mean)) + abs_normal_mean
         results.sort()
         results = 1 / results
         results[0] = 0 # make sure we have one 0 value
+        results = np.tile(results, 2)
         return results
 
     def _dbscan(self, dfh, label_file_root):
         labels = []
-        r0_list = []
 
         dfh['d'] = np.sqrt(dfh.x**2+dfh.y**2+dfh.z**2)
         dfh['r'] = np.sqrt(dfh.x**2+dfh.y**2)
         dfh['z5'] = (dfh.r - np.absolute(dfh.z))/dfh.r
-        #theta
         dfh['zr'] = np.arctan2(dfh.z, dfh.r)
         rr = dfh['r']/1000      
 
         if self.model_parameters[0] is HELIX_UNROLL_R0_MODE:
-            inv_r0_list = self._get_samples(1000)
-            
+            inv_r0_list = self._get_samples(600)                  
+
         for loop in range(len(self.model_parameters[3])):
             label_file = label_file_root + '_dbscan' + str(loop+1) + '.csv'
             if os.path.exists(label_file):
                 print('Loading dbscan loop ' + str(loop+1) + ' file: ' + label_file)
                 labels.append(pd.read_csv(label_file).label.values)
             else:
-                if loop%4 == 0:
+                if loop%4 == 0 or self.model_parameters[0] is HELIX_UNROLL_R0_MODE:
                     dfh['a0'] = np.arctan2(dfh.y,dfh.x)
                     dfh['xd'] = dfh.x/dfh['d']
                     dfh['yd'] = dfh.y/dfh['d']
@@ -141,8 +141,12 @@ class Clusterer(object):
                         r_inv_upd_ix = np.where(np.abs(r_inv) > 1 )[0]
                         r_inv[r_inv_upd_ix] = 1
                         dfh['cos_theta'] = r_inv
-
-                        dfh['a1'] = dfh['a0'] - np.arccos(dfh['cos_theta'])
+            
+                        if ii < inv_r0_list.shape[0]/2:
+                            dfh['a1'] = dfh['a0'] - np.arccos(dfh['cos_theta'])
+                        else:
+                            dfh['a1'] = dfh['a0'] + np.arccos(dfh['cos_theta'])
+                        
                         dfh['sina1'] = np.sin(dfh['a1'])
                         dfh['cosa1'] = np.cos(dfh['a1'])
                         
