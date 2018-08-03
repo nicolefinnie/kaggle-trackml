@@ -40,7 +40,7 @@ FEATURE_MATRIX_4 = ['sina1','cosa1', 'zr', 'z3']
 SCALED_DISTANCE_5 = [1, 1, 0.5, 0.25, 0.008, 0.008, 0.00175, 0.00175]
 FEATURE_MATRIX_5 = ['sina1', 'cosa1', 'r0', 'z3', 'xd', 'yd', 'px', 'py']
 
-SCALED_DISTANCE_6 = [1,       1,       0.35] 
+SCALED_DISTANCE_6 = [1,       1,       0.5] 
 FEATURE_MATRIX_6 = ['sina1', 'cosa1', 'zarc']
 
 
@@ -75,7 +75,7 @@ class Clusterer(object):
     def __init__(self, model_parameters):                        
         self.model_parameters = model_parameters
 
-    def _get_samples(self, num_samples, invert=True, duplicate=True, add_0=0, region1_percent=95, region1_type=3, region1_min=100, region1_max=5000, region2_type=3, region2_min=5001, region2_max=12500):
+    def _get_samples(self, num_samples, invert=True, duplicate=True, add_0=0, region1_percent=95, region1_type=3, region1_min=100, region1_max=5000, region2_type=3, region2_min=5001, region2_max=25000):
         """
         num_samples - the number of sample points to generate
         invert - whether the values should be inverted before being returned
@@ -127,7 +127,7 @@ class Clusterer(object):
         rr = dfh['r']/1000      
 
         if self.model_parameters[0] is HELIX_UNROLL_R0_MODE:
-            r0_list = self._get_samples(40, invert=False)                 
+            r0_list = self._get_samples(200, invert=False)                 
 
         for loop in range(len(self.model_parameters[3])):
             label_file = label_file_root + '_dbscan' + str(loop+1) + '.csv'
@@ -156,7 +156,8 @@ class Clusterer(object):
                 dfh['zshift'] = dfh.z + self.model_parameters[3][loop]
                 dfh['z1'] = dfh.zshift/dfh['r'] 
                 dfh['z2'] = dfh.zshift/dfh['d']
-             
+                dfh['z3'] = np.log1p(np.absolute(dfh.zshift/ dfh.r))*np.sign(dfh.zshift)
+                          
                 # r0 loop 
                 if self.model_parameters[0] is HELIX_UNROLL_R0_MODE:
                     for ii, r0 in enumerate(tqdm(r0_list)):
@@ -170,7 +171,7 @@ class Clusterer(object):
                         dfh.cos_theta = r_inv
                         
                         #zero_ix = np.where(dfh['cos_theta'] == 0)
-                        non_zero_ix = np.where(dfh['cos_theta'] != 0)
+                        #non_zero_ix = np.where(dfh['cos_theta'] != 0)
 
 
                         if ii < r0_list.shape[0]/2:
@@ -183,37 +184,35 @@ class Clusterer(object):
                         dfh['cosa1'] = np.cos(dfh['a1'])
 
                         # z / angle                  
-                        for shift in tqdm([0]):
-                            #dfh['zarc'] = 0
-                            #zarc = dfh.zarc.values
-                            dfh['zshift'] = dfh.z + shift
-                            #zarc[zero_ix] = dfh.zshift.iloc[zero_ix]/dfh.r.iloc[zero_ix]
-                            #TODO if the arc angle is greater than pi
-                            #zarc[non_zero_ix] = dfh.zshift.iloc[non_zero_ix]/ (np.arcsin(dfh.cos_theta.iloc[non_zero_ix]) * 2 )
-                            #dfh['zarc'] = dfh.zshift/ np.arcsin (dfh.cos_theta*2)
-                            #dfh['zarc'] = np.log1p(np.absolute(dfh.zshift/ (np.arcsin(dfh.cos_theta.iloc[non_zero_ix]) * 2 * r0 )))*np.sign(dfh.zshift)
-                            #dfh['zarc'] = zarc
-                            dfh['zarc'] = np.log1p(np.absolute(dfh.zshift/ (np.arcsin(dfh.cos_theta) * 2 * r0 )))*np.sign(dfh.zshift)
-                           
-                            ss = StandardScaler()
-                            dfs = ss.fit_transform(dfh[self.model_parameters[1]].values)
-                            dfs = np.multiply(dfs, self.model_parameters[2])
-                    
-                            self.clusters = DBSCAN(eps=DBSCAN_EPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+                        #dfh['zarc'] = 0
+                        #zarc = dfh.zarc.values
+                        #zarc[zero_ix] = dfh.zshift.iloc[zero_ix]/dfh.r.iloc[zero_ix]
+                        #TODO if the arc angle is greater than pi
+                        #zarc[non_zero_ix] = dfh.zshift.iloc[non_zero_ix]/ (np.arcsin(dfh.cos_theta.iloc[non_zero_ix]) * 2 )
+                        #dfh['zarc'] = dfh.zshift/ np.arcsin (dfh.cos_theta*2)
+                        #dfh['zarc'] = np.log1p(np.absolute(dfh.zshift/ (np.arcsin(dfh.cos_theta.iloc[non_zero_ix]) * 2 * r0 )))*np.sign(dfh.zshift)
+                        #dfh['zarc'] = zarc
+                        dfh['zarc'] = np.log1p(np.absolute(dfh.zshift/ (np.arcsin(dfh.cos_theta) * 2 * r0 )))*np.sign(dfh.zshift)
+                        
+                        ss = StandardScaler()
+                        dfs = ss.fit_transform(dfh[self.model_parameters[1]].values)
+                        dfs = np.multiply(dfs, self.model_parameters[2])
+                
+                        self.clusters = DBSCAN(eps=DBSCAN_EPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
 
-                            if 's1' not in dfh:
-                                dfh['s1'] = self.clusters
-                                dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
-                            else:
-                                dfh['s2'] = self.clusters
-                                dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
-                                maxs1 = dfh['s1'].max()
-                                cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
-                                s1 = dfh['s1'].values
-                                s1[cond] = dfh['s2'].values[cond]+maxs1
-                                dfh['s1'] = s1
-                                dfh['s1'] = dfh['s1'].astype('int64')
-                                dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+                        if 's1' not in dfh:
+                            dfh['s1'] = self.clusters
+                            dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
+                        else:
+                            dfh['s2'] = self.clusters
+                            dfh['N2'] = dfh.groupby('s2')['s2'].transform('count')
+                            maxs1 = dfh['s1'].max()
+                            cond = np.where( (dfh['N2'].values>dfh['N1'].values) & (dfh['N2'].values < 20) )
+                            s1 = dfh['s1'].values
+                            s1[cond] = dfh['s2'].values[cond]+maxs1
+                            dfh['s1'] = s1
+                            dfh['s1'] = dfh['s1'].astype('int64')
+                            dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
 
                 #r mode
                 else:
@@ -517,7 +516,7 @@ def predict_event(event_id, hits, train_or_test, truth):
     model_parameters.append(HELIX_UNROLL_R0_MODE)
     model_parameters.append(FEATURE_MATRIX_6)
     model_parameters.append(SCALED_DISTANCE_6)
-    model_parameters.append([2])
+    model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6, -10, 2, 8, -2])
     print_info(6, model_parameters)
     labels_helix6 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix6', model_parameters, one_phase_only=False)
 
