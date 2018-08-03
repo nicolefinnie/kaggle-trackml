@@ -3,17 +3,117 @@ import time as time
 from sklearn.neighbors import KDTree
 import collections as coll
 import track_score as score
-
-def extend_labels(iter, labels, hits, do_swap=False, limit=0.04):
-    df = hits.copy(deep=True)
-    df['track_id'] = labels.tolist()
-    return extend(iter, df, do_swap, limit).track_id.values
+import straight_tracks as strt
 
 def extend_submission(iter, submissions, hits, do_swap=False, limit=0.04):
     df = submissions.merge(hits,  on=['hit_id'], how='left')
     df = extend(iter, df, do_swap, limit)
     return df[['event_id', 'hit_id', 'track_id']]       
-    
+
+def try_extend_single_hit_avoid_outliers(track, track_len, hit_ix, labels, hits, use_scoring):
+    """
+    This is a variant that tries to avoid extending our track when the target hit looks
+    like it would likely be an outlier, for example if it contains the exact same z-value
+    as the previous hit in the track, or if the new hit's zr value is significantly
+    different than hits from the previous layer.
+    At the moment, this does not improve the score - it reduces the number of outliers
+    that need to later be removed, however the end score is very slightly lower.
+    As such, it is not called for now, until such time it can be improved such
+    that it increases our score.
+    """
+    trk_ix = np.where(labels == track)[0]
+    df = hits.loc[trk_ix]
+    (z) = df[['z']].values.astype(np.float32).T
+    hit_z = hits.loc[hit_ix].z
+    hit_zr = hits.loc[hit_ix].zr
+    hit_volume = hits.loc[hit_ix].volume_id
+    hit_layer = hits.loc[hit_ix].layer_id.astype(np.int)
+    #print('hit_layer: ' + str(hit_layer))
+    if hit_z in z:
+        #print('Already have z: ' + str(hit_z) + ', ' + str(z))
+        return (labels, track_len)
+    df = df.loc[(hits['volume_id'] == hit_volume)]
+    df = df.sort_values('z')
+    (x, y, z, zr) = df[['x', 'y', 'z', 'zr']].values.astype(np.float32).T
+    layer = df.layer_id.values
+    lmap = [0,0,0,0,1,0,2,0,3,0,4,0,5,0,6]
+    #print(layer)
+    (xs, ys, zrs, counts) = strt.generate_zr_layer_data(x, y, zr, layer, lmap)
+    aix = lmap[hit_layer]
+    if zrs[aix] != 0 and abs(zrs[aix]) > 1.0: # FIXME: Evaluate ones <= 1.0....
+        #print('existing mean zr: ' + str(zrs[aix]) + ', hit_zr: ' + str(hit_zr))
+        abs1 = abs(zrs[aix])
+        abs2 = abs(hit_zr)
+        if abs(zrs[aix]) < 1:
+            min_abs = abs1 * 0.8
+            max_abs = abs1 * 1.2
+        elif abs(zrs[aix]) < 10:
+            min_abs = abs1 * 0.9
+            max_abs = abs1 * 1.1
+        else:
+            min_abs = abs1 * 0.99
+            max_abs = abs1 * 1.01
+        if abs2 < min_abs or abs2 > max_abs or (zrs[aix] > 0 and hit_zr < 0) or (zrs[aix] < 0 and hit_zr > 0):
+            #print('SKIP: existing mean zr: ' + str(zrs[aix]) + ', hit_zr: ' + str(hit_zr) + ', min: ' + str(min_abs) + ', max: ' + str(max_abs))
+            return (labels, track_len)
+    if use_scoring:
+        outlier_modifier = 0.75
+        orig_track = labels[hit_ix]
+        labels[hit_ix] = track
+        new_score = score.calculate_track_score(track, labels, hits, outlier_modifier=outlier_modifier, outlier_ix=hit_ix)
+        labels[hit_ix] = orig_track
+        if orig_track != 0:
+            orig_score = score.calculate_track_score(orig_track, labels, hits, outlier_modifier=outlier_modifier, outlier_ix=hit_ix)
+        else:
+            orig_score = 0
+
+        if new_score >= orig_score:
+            labels[hit_ix] = track
+            track_len = track_len + 1
+    else:
+        orig_track = labels[hit_ix]
+        if orig_track == 0:
+            labels[hit_ix] = track
+        else:
+            # If the hit is already occupied by another track, only take ownership
+            # of the hit if our track is longer than the current-occupying track.
+            orig_track_len = len(np.where(labels==orig_track)[0])
+            if track_len > orig_track_len:
+                labels[hit_ix] = track
+                track_len = track_len + 1
+                
+    return (labels, track_len)
+
+def try_extend_single_hit(track, track_len, hit_ix, labels, hits, use_scoring):
+    if use_scoring:
+        outlier_modifier = 0.75
+        orig_track = labels[hit_ix]
+        labels[hit_ix] = track
+        new_score = score.calculate_track_score(track, labels, hits, outlier_modifier=outlier_modifier, outlier_ix=hit_ix)
+        labels[hit_ix] = orig_track
+        if orig_track != 0:
+            orig_score = score.calculate_track_score(orig_track, labels, hits, outlier_modifier=outlier_modifier, outlier_ix=hit_ix)
+        else:
+            orig_score = 0
+
+        if new_score >= orig_score:
+            labels[hit_ix] = track
+            track_len = track_len + 1
+    else:
+        orig_track = labels[hit_ix]
+        if orig_track == 0:
+            labels[hit_ix] = track
+        else:
+            # If the hit is already occupied by another track, only take ownership
+            # of the hit if our track is longer than the current-occupying track.
+            orig_track_len = len(np.where(labels==orig_track)[0])
+            if track_len > orig_track_len:
+                labels[hit_ix] = track
+                track_len = track_len + 1
+                
+    return (labels, track_len)
+
+
 def _one_cone_slice(df, df1, angle, delta_angle, limit=0.04, num_neighbours=18, use_scoring=False):
 
     min_num_neighbours = len(df1)
@@ -87,31 +187,7 @@ def _one_cone_slice(df, df1, angle, delta_angle, limit=0.04, num_neighbours=18, 
             # Un-comment this to see if we are extending the track properly
             #is_good = (truth.loc[df_ix, 'particle_id'] == truth_particle_id)
 
-            if use_scoring:
-                outlier_modifier = 0.75
-                orig_label = labels[df_ix]
-                labels[df_ix] = p
-                new_score = score.calculate_track_score(p, labels, df, outlier_modifier=outlier_modifier, outlier_ix=df_ix)
-                labels[df_ix] = orig_label
-                if orig_label != 0:
-                    orig_score = score.calculate_track_score(orig_label, labels, df, outlier_modifier=outlier_modifier, outlier_ix=df_ix)
-                else:
-                    orig_score = 0
-
-                if new_score >= orig_score:
-                    labels[df_ix] = p
-                    cur_track_len = cur_track_len + 1
-            else:
-                old_track = labels[df_ix]
-                if old_track == 0:
-                    labels[df_ix] = p
-                else:
-                    # If the hit is already occupied by another track, only take ownership
-                    # of the hit if our track is longer than the current-occupying track.
-                    existing_track_len = len(np.where(labels==old_track)[0])
-                    if cur_track_len > existing_track_len:
-                        labels[df_ix] = p
-
+            (labels, cur_track_len) = try_extend_single_hit(p, cur_track_len, df_ix, labels, df, use_scoring)
 
         ## extend end point
         ns = tree.query([[c1, s1, r1, zr1]], k=min(num_neighbours, min_num_neighbours), return_distance=False)
@@ -126,30 +202,7 @@ def _one_cone_slice(df, df1, angle, delta_angle, limit=0.04, num_neighbours=18, 
             # Un-comment this to see if we are extending the track properly
             #is_good = (truth.loc[df_ix, 'particle_id'] == truth_particle_id)
 
-            if use_scoring:
-                outlier_modifier=0.75
-                orig_label = labels[df_ix]
-                labels[df_ix] = p
-                new_score = score.calculate_track_score(p, labels, df, outlier_modifier=outlier_modifier, outlier_ix=df_ix)
-                labels[df_ix] = orig_label
-                if orig_label != 0:
-                    orig_score = score.calculate_track_score(orig_label, labels, df, outlier_modifier=outlier_modifier, outlier_ix=df_ix)
-                else:
-                    orig_score = 0
-
-                if new_score >= orig_score:
-                    labels[df_ix] = p
-                    cur_track_len = cur_track_len + 1
-            else:
-                old_track = labels[df_ix]
-                if old_track == 0:
-                    labels[df_ix] = p
-                else:
-                    # If the hit is already occupied by another track, only take ownership
-                    # of the hit if our track is longer than the current-occupying track.
-                    existing_track_len = len(np.where(labels==old_track)[0])
-                    if cur_track_len > existing_track_len:
-                        labels[df_ix] = p
+            (labels, cur_track_len) = try_extend_single_hit(p, cur_track_len, df_ix, labels, df, use_scoring)
 
     df['track_id'] = labels
 
