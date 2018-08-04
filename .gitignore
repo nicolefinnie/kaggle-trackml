@@ -1,5 +1,3 @@
-# ignore train/test data
-input/*
 
 # ignore swap data, IDE, submission
 *~
