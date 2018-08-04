@@ -52,6 +52,9 @@ EXTENSION_STANDARD_LIMITS = [0.02, 0.04, 0.06, 0.08, 0.10]
 EXTENSION_LIGHT_LIMITS = [0.03, 0.07]
 
 DBSCAN_EPS = 0.0033
+
+SAMPLE = 300
+R0_STEP_EPS = 0.00055
 # using radius of every hit to approximate the angle between y-axis and 
 # the closest approach to the centre of helix
 HELIX_UNROLL_R_MODE = 'Radius mode'
@@ -66,6 +69,8 @@ print('steps: ' + str(STEPS))
 print('steprr: ' + str(STEPRR))
 
 print('stepeps: ' + str(STEPEPS))
+print('r0 samples: ' + str(SAMPLE))
+print('r0 step eps: ' + str(R0_STEP_EPS))
 print('extension standard limits: ' + str(EXTENSION_STANDARD_LIMITS))
 print('extension light limits: ' + str(EXTENSION_LIGHT_LIMITS))
 
@@ -75,7 +80,7 @@ class Clusterer(object):
     def __init__(self, model_parameters):                        
         self.model_parameters = model_parameters
 
-    def _get_samples(self, num_samples, invert=True, duplicate=True, add_0=0, region1_percent=95, region1_type=3, region1_min=100, region1_max=5000, region2_type=3, region2_min=5001, region2_max=25000):
+    def _get_samples(self, num_samples, invert=True, duplicate=True, add_0=0, region1_percent=95, region1_type=3, region1_min=100, region1_max=5000, region2_type=3, region2_min=5001, region2_max=37500):
         """
         num_samples - the number of sample points to generate
         invert - whether the values should be inverted before being returned
@@ -127,7 +132,7 @@ class Clusterer(object):
         rr = dfh['r']/1000      
 
         if self.model_parameters[0] is HELIX_UNROLL_R0_MODE:
-            r0_list = self._get_samples(200, invert=False)                 
+            r0_list = self._get_samples(SAMPLE, invert=False)                 
 
         for loop in range(len(self.model_parameters[3])):
             label_file = label_file_root + '_dbscan' + str(loop+1) + '.csv'
@@ -198,8 +203,11 @@ class Clusterer(object):
                         dfs = ss.fit_transform(dfh[self.model_parameters[1]].values)
                         dfs = np.multiply(dfs, self.model_parameters[2])
                 
-                        self.clusters = DBSCAN(eps=DBSCAN_EPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
-
+                        if ii < r0_list.shape[0]/2:
+                            self.clusters = DBSCAN(eps=DBSCAN_EPS + ii/SAMPLE*R0_STEP_EPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+                        else:
+                            self.clusters = DBSCAN(eps=DBSCAN_EPS + (ii-SAMPLE)/SAMPLE*R0_STEP_EPS,min_samples=1, n_jobs=-1).fit(dfs).labels_
+                            
                         if 's1' not in dfh:
                             dfh['s1'] = self.clusters
                             dfh['N1'] = dfh.groupby('s1')['s1'].transform('count')
@@ -516,7 +524,7 @@ def predict_event(event_id, hits, train_or_test, truth):
     model_parameters.append(HELIX_UNROLL_R0_MODE)
     model_parameters.append(FEATURE_MATRIX_6)
     model_parameters.append(SCALED_DISTANCE_6)
-    model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6, -10, 2, 8, -2])
+    model_parameters.append([0])
     print_info(6, model_parameters)
     labels_helix6 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix6', model_parameters, one_phase_only=False)
 
