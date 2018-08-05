@@ -22,6 +22,7 @@ import cone_slicing as cone
 import merge as merge
 import free_hits as free
 import straight_tracks as strt
+import r0outlier as r0o
 
 INPUT_PATH = '../../input'
 
@@ -379,6 +380,10 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
                 message = 'Unfiltered dbscan loop ' + str(i+1) + ' score for event '
                 display_score(event_id, all_hits, labels_full[i], truth, message)
 
+                labels_full[i] = r0o.remove_badr0_tracks(labels_full[i], all_hits)
+                message = 'After r0 outlier removal for dbscan loop ' + str(i+1) + ' score for event '
+                display_score(event_id, all_hits, labels_full[i], truth, message)
+
                 # If desired, extend tracks
                 if track_extension_limits is not None:
                     num_neighbours = 18
@@ -575,6 +580,19 @@ def predict_event(event_id, hits, train_or_test, truth):
     display_score(event_id, hits, labels_helix5, truth, 'After outlier removal helix5 ')
     display_score(event_id, hits, labels_helix6, truth, 'After outlier removal helix6 ')
 
+    labels_helix1 = r0o.remove_badr0_tracks(labels_helix1, hits)
+    labels_helix2 = r0o.remove_badr0_tracks(labels_helix2, hits)
+    labels_helix3 = r0o.remove_badr0_tracks(labels_helix3, hits)
+    labels_helix4 = r0o.remove_badr0_tracks(labels_helix4, hits)
+    labels_helix5 = r0o.remove_badr0_tracks(labels_helix5, hits)
+    labels_helix6 = r0o.remove_badr0_tracks(labels_helix6, hits)
+
+    display_score(event_id, hits, labels_helix1, truth, 'After r0 outlier removal helix1 ')
+    display_score(event_id, hits, labels_helix2, truth, 'After r0 outlier removal helix2 ')
+    display_score(event_id, hits, labels_helix3, truth, 'After r0 outlier removal helix3 ')
+    display_score(event_id, hits, labels_helix4, truth, 'After r0 outlier removal helix4 ')
+    display_score(event_id, hits, labels_helix5, truth, 'After r0 outlier removal helix5 ')
+    display_score(event_id, hits, labels_helix6, truth, 'After r0 outlier removal helix6 ')
 
     labels = merge.heuristic_merge_tracks(labels_helix1, labels_helix2, hits, overwrite_limit=6, print_summary=False)
     display_score(event_id, hits, labels, truth, 'Merged helix1&2 unrolling for event ')

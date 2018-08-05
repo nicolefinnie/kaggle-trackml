@@ -185,7 +185,7 @@ def heuristic_merge_tracks(labels1, labels2, hits, overwrite_limit=4, print_summ
                 count10 = count10 + 1
                 trk1a = np.where(labels_merged == longest_track_id)[0]
                 if longest_track_count + 3 >= len(trk1a):
-                    #print('LIAM: Top 2 tracks, new: ' + str(trk2_length) + ', len1: '  + str(longest_track_count) + ', len1a: ' + str(len(trk1a)) + ', len2: ' + str(second_track_count) + ', len2a: ' + str(len(trk2a)))
+                    #print('Top 2 tracks, new: ' + str(trk2_length) + ', len1: '  + str(longest_track_count) + ', len1a: ' + str(len(trk1a)) + ', len2: ' + str(second_track_count) + ', len2a: ' + str(len(trk2a)))
                     # Lengthen the longest track, it's fully contained by our new/proposed track.
                     # Reset 2nd longest track if mostly contained in new/proposed track.
                     count14 = count14 + 1
@@ -225,7 +225,6 @@ def heuristic_merge_tracks(labels1, labels2, hits, overwrite_limit=4, print_summ
                 # those matching the labels2 track to the most common
                 # original track ID.
                 for trk1_count in trk1_counts:
-                    #if trk1_count[1] <= overwrite_limit:
                     trk1_count_ix = np.where(labels_merged == trk1_count[0])[0]
                     if len(trk1_count_ix) <= overwrite_limit:
                         outliers = zro.find_track_outliers_zr(trk2, labels2, hits, find_all=True)
