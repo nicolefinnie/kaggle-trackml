@@ -13,7 +13,7 @@ def estimate_helix_r0(track_ix, hits):
         return d
 
     df = hits.iloc[track_ix]
-    t = df.as_matrix(columns=['x','y','z'])
+    t = df[['x', 'y', 'z']].values
     t = t[np.argsort(np.fabs(t[:,2]))]
 
     x = t[:,0]
