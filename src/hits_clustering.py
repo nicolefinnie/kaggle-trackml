@@ -41,7 +41,7 @@ SCALED_DISTANCE_5 = [1, 1, 0.5, 0.25, 0.008, 0.008, 0.00175, 0.00175]
 FEATURE_MATRIX_5 = ['sina1', 'cosa1', 'r0', 'z3', 'xd', 'yd', 'px', 'py']
 
 SCALED_DISTANCE_6 = [1,       1,       0.5, 0.00175, 0.00175] 
-FEATURE_MATRIX_6 = ['sina1', 'cosa1', 'zarc', 'x0', 'y0']
+FEATURE_MATRIX_6 = ['sina1', 'cosa1', 'zarc', 'px', 'py']
 
 
 STEPRR = 0.03
