@@ -40,7 +40,7 @@ FEATURE_MATRIX_4 = ['sina1','cosa1', 'zr', 'z3']
 SCALED_DISTANCE_5 = [1, 1, 0.5, 0.25, 0.008, 0.008, 0.00175, 0.00175]
 FEATURE_MATRIX_5 = ['sina1', 'cosa1', 'r0', 'z3', 'xd', 'yd', 'px', 'py']
 
-SCALED_DISTANCE_6 = [1,       1,       0.5, 0.185, 0.185] 
+SCALED_DISTANCE_6 = [1,       1,       0.5, 0.00185, 0.00185] 
 FEATURE_MATRIX_6 = ['sina1', 'cosa1', 'zarc', 'px', 'py']
 
 
@@ -54,7 +54,7 @@ EXTENSION_LIGHT_LIMITS = [0.03, 0.07]
 
 DBSCAN_EPS = 0.0033
 
-SAMPLE = 400
+SAMPLE = 50
 R0_STEP_EPS = 0.00055
 MIN_R0 = 270
 MAX_R0 = 37500
@@ -204,8 +204,12 @@ class Clusterer(object):
                             dfh['a1'] = dfh['a0'] + np.arccos(dfh['cos_theta'])
                         
                         # parameter space
-                        dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
-                        dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
+                        #dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
+                        #dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
+
+                        #x0, y0
+                        dfh['px'] = dfh.x + r0*np.cos(dfh.a0)*np.cos(dfh.a1) + r0*np.sin(dfh.a0)*np.sin(dfh.a1)
+                        dfh['py'] = dfh.y + r0*np.cos(dfh.a0)*np.sin(dfh.a1) - r0*np.sin(dfh.a0)*np.cos(dfh.a1)
                         
 
                         dfh['sina1'] = np.sin(dfh['a1'])
