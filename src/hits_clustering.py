@@ -380,12 +380,18 @@ def run_predictions(event_id, all_labels, all_hits, truth, model, label_file_roo
                 message = 'Unfiltered dbscan loop ' + str(i+1) + ' score for event '
                 display_score(event_id, all_hits, labels_full[i], truth, message)
 
-                labels_full[i] = r0o.remove_badr0_tracks(labels_full[i], all_hits)
-                message = 'After r0 outlier removal for dbscan loop ' + str(i+1) + ' score for event '
-                display_score(event_id, all_hits, labels_full[i], truth, message)
+                if filter_hits:
+                    labels_full[i] = r0o.remove_badr0_tracks(labels_full[i], all_hits)
+                    message = 'After r0 outlier removal for dbscan loop ' + str(i+1) + ' score for event '
+                    display_score(event_id, all_hits, labels_full[i], truth, message)
 
                 # If desired, extend tracks
                 if track_extension_limits is not None:
+                    # Start with straight-track extension, it is more accurate but does
+                    # not find quite as much.
+                    labels_full[i] = strt.extend_straight_tracks(labels_full[i], all_hits)
+                    message = 'After r0 outlier removal + STRT ext. for dbscan loop ' + str(i+1) + ' score for event '
+
                     num_neighbours = 18
                     if one_phase_only:
                         num_neighbours = 25
