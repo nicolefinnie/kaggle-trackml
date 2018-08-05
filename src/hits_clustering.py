@@ -40,8 +40,8 @@ FEATURE_MATRIX_4 = ['sina1','cosa1', 'zr', 'z3']
 SCALED_DISTANCE_5 = [1, 1, 0.5, 0.25, 0.008, 0.008, 0.00175, 0.00175]
 FEATURE_MATRIX_5 = ['sina1', 'cosa1', 'r0', 'z3', 'xd', 'yd', 'px', 'py']
 
-SCALED_DISTANCE_6 = [1,       1,       0.5] 
-FEATURE_MATRIX_6 = ['sina1', 'cosa1', 'zarc']
+SCALED_DISTANCE_6 = [1,       1,       0.5, 0.185, 0.185] 
+FEATURE_MATRIX_6 = ['sina1', 'cosa1', 'zarc', 'px', 'py']
 
 
 STEPRR = 0.03
@@ -202,6 +202,10 @@ class Clusterer(object):
                             dfh['a1'] = dfh['a0'] - np.arccos(dfh['cos_theta'])
                         else:
                             dfh['a1'] = dfh['a0'] + np.arccos(dfh['cos_theta'])
+                        
+                        # parameter space
+                        dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
+                        dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
                         
 
                         dfh['sina1'] = np.sin(dfh['a1'])
@@ -543,7 +547,8 @@ def predict_event(event_id, hits, train_or_test, truth):
     model_parameters.append(HELIX_UNROLL_R0_MODE)
     model_parameters.append(FEATURE_MATRIX_6)
     model_parameters.append(SCALED_DISTANCE_6)
-    model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6, -10, 2, 8, -2])
+    #model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6, -10, 2, 8, -2])  
+    model_parameters.append([0])
     model_parameters.append(R0_SAMPLE_EVENT)
     print_info(6, model_parameters)
     labels_helix6 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix6', model_parameters, one_phase_only=False)
