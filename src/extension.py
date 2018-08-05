@@ -208,7 +208,7 @@ def _one_cone_slice(df, df1, angle, delta_angle, limit=0.04, num_neighbours=18, 
 
     return df
 
-def do_all_track_extensions(labels, hits, track_extension_limits, num_neighbours=18):
+def do_all_track_extensions(labels, hits, track_extension_limits, num_neighbours=18, use_scoring=False):
     time1 = time.time()
     df = hits.copy(deep=True)
     df['track_id'] = labels.tolist()
@@ -217,12 +217,12 @@ def do_all_track_extensions(labels, hits, track_extension_limits, num_neighbours
     df['zr'] = df.z / df.r
     df['arctan2'] = np.arctan2(df.z, df.r)
     for ix, limit in enumerate(track_extension_limits):
-        df = extend(ix, df, do_swap=(ix%2==1), limit=(limit), num_neighbours=num_neighbours)
+        df = extend(ix, df, do_swap=(ix%2==1), limit=(limit), num_neighbours=num_neighbours, use_scoring=use_scoring)
     time2 = time.time()
     print('Track extension took {:.3f} ms'.format((time2-time1)*1000.0))
     return df.track_id.values
 
-def extend(iter, df, do_swap=False, limit=0.04, num_neighbours=18):
+def extend(iter, df, do_swap=False, limit=0.04, num_neighbours=18, use_scoring=False):
     if do_swap:
         df = df.assign(x = -df.x)
         df = df.assign(y = -df.y)
@@ -240,15 +240,15 @@ def extend(iter, df, do_swap=False, limit=0.04, num_neighbours=18):
         # Dynamically adjust the delta based on how many hits are found
         if num_hits > 2000:
             df1 = df.loc[(df.arctan2>(angle - 0.6 - 0.4)/180*np.pi) & (df.arctan2<(angle -0.6 + 0.4)/180*np.pi)]
-            df = _one_cone_slice(df, df1, angle-0.6, 0.4, limit, num_neighbours)
+            df = _one_cone_slice(df, df1, angle-0.6, 0.4, limit, num_neighbours, use_scoring)
             df1 = df.loc[(df.arctan2>(angle - 0.2 - 0.4)/180*np.pi) & (df.arctan2<(angle -0.2 + 0.4)/180*np.pi)]
-            df = _one_cone_slice(df, df1, angle-0.2, 0.4, limit, num_neighbours)
+            df = _one_cone_slice(df, df1, angle-0.2, 0.4, limit, num_neighbours, use_scoring)
             df1 = df.loc[(df.arctan2>(angle + 0.2 - 0.4)/180*np.pi) & (df.arctan2<(angle +0.2 + 0.4)/180*np.pi)]
-            df = _one_cone_slice(df, df1, angle+0.2, 0.4, limit, num_neighbours)
+            df = _one_cone_slice(df, df1, angle+0.2, 0.4, limit, num_neighbours, use_scoring)
             df1 = df.loc[(df.arctan2>(angle + 0.6 - 0.4)/180*np.pi) & (df.arctan2<(angle +0.6 + 0.4)/180*np.pi)]
-            df = _one_cone_slice(df, df1, angle+0.6, 0.4, limit, num_neighbours)
+            df = _one_cone_slice(df, df1, angle+0.6, 0.4, limit, num_neighbours, use_scoring)
         else:
-            df = _one_cone_slice(df, df1, angle, 1, limit, num_neighbours)
+            df = _one_cone_slice(df, df1, angle, 1, limit, num_neighbours, use_scoring)
            
     return df
 
