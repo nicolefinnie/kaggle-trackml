@@ -51,10 +51,15 @@ STEPS = 100
 EXTENSION_STANDARD_LIMITS = [0.02, 0.04, 0.06, 0.08, 0.10]
 EXTENSION_LIGHT_LIMITS = [0.03, 0.07]
 
+
 DBSCAN_EPS = 0.0033
 
-SAMPLE = 300
+SAMPLE = 400
 R0_STEP_EPS = 0.00055
+MIN_R0 = 270
+MAX_R0 = 37500
+R0_SAMPLE_EVENT = [1010, 1015, 1020, 1025, 1030, 1040, 1045, 1050, 1060, 1070, 1080, 1090]
+
 # using radius of every hit to approximate the angle between y-axis and 
 # the closest approach to the centre of helix
 HELIX_UNROLL_R_MODE = 'Radius mode'
@@ -71,8 +76,11 @@ print('steprr: ' + str(STEPRR))
 print('stepeps: ' + str(STEPEPS))
 print('r0 samples: ' + str(SAMPLE))
 print('r0 step eps: ' + str(R0_STEP_EPS))
+print('min r0: ' + str(MIN_R0))
+print('r0 sample events: ' + str(R0_SAMPLE_EVENT))
 print('extension standard limits: ' + str(EXTENSION_STANDARD_LIMITS))
 print('extension light limits: ' + str(EXTENSION_LIGHT_LIMITS))
+
 
 print ('#######################################################################')
 
@@ -80,7 +88,13 @@ class Clusterer(object):
     def __init__(self, model_parameters):                        
         self.model_parameters = model_parameters
 
-    def _get_samples(self, num_samples, invert=True, duplicate=True, add_0=0, region1_percent=95, region1_type=3, region1_min=100, region1_max=5000, region2_type=3, region2_min=5001, region2_max=37500):
+    # To generate r0_list.csv, see src/notebooks/EDA/helix_parameter_space.ipynb
+    # We use event_1030 as our sample data since it's more representative
+    def _read_samples(self, event_id):
+        path_to_r0 = os.path.join(INPUT_PATH, 'r0_list')
+        return pd.read_csv(os.path.join(path_to_r0, 'r0_list_%s.csv'%event_id)).r0.values
+
+    def _get_samples(self, num_samples, invert=True, duplicate=True, add_0=0, region1_percent=95, region1_type=3, region1_min=MIN_R0, region1_max=4500, region2_type=3, region2_min=4501, region2_max=MAX_R0):
         """
         num_samples - the number of sample points to generate
         invert - whether the values should be inverted before being returned
@@ -131,10 +145,8 @@ class Clusterer(object):
         
         rr = dfh['r']/1000      
 
-        if self.model_parameters[0] is HELIX_UNROLL_R0_MODE:
-            r0_list = self._get_samples(SAMPLE, invert=False)                 
-
         for loop in range(len(self.model_parameters[3])):
+
             label_file = label_file_root + '_dbscan' + str(loop+1) + '.csv'
             if os.path.exists(label_file):
                 print('Loading dbscan loop ' + str(loop+1) + ' file: ' + label_file)
@@ -165,6 +177,14 @@ class Clusterer(object):
                           
                 # r0 loop 
                 if self.model_parameters[0] is HELIX_UNROLL_R0_MODE:
+                    #r0_list = self._get_samples(SAMPLE, invert=False)  
+                    r0_list = self._read_samples(self.model_parameters[4][loop])
+                    r0_list = r0_list[ r0_list > MIN_R0 ]
+                    skip = int(r0_list.shape[0]/SAMPLE)
+                    if skip > 1:
+                        r0_list = r0_list[::skip]    
+                    r0_list = np.tile(r0_list, 2)
+
                     for ii, r0 in enumerate(tqdm(r0_list)):
                         print ('\r steps: %d '%ii, end='',flush=True)
                     
@@ -177,7 +197,6 @@ class Clusterer(object):
                         
                         #zero_ix = np.where(dfh['cos_theta'] == 0)
                         #non_zero_ix = np.where(dfh['cos_theta'] != 0)
-
 
                         if ii < r0_list.shape[0]/2:
                             dfh['a1'] = dfh['a0'] - np.arccos(dfh['cos_theta'])
@@ -524,7 +543,8 @@ def predict_event(event_id, hits, train_or_test, truth):
     model_parameters.append(HELIX_UNROLL_R0_MODE)
     model_parameters.append(FEATURE_MATRIX_6)
     model_parameters.append(SCALED_DISTANCE_6)
-    model_parameters.append([0])
+    model_parameters.append([3, -6, 4, 12, -9, 10, -3, 6, -10, 2, 8, -2])
+    model_parameters.append(R0_SAMPLE_EVENT)
     print_info(6, model_parameters)
     labels_helix6 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix6', model_parameters, one_phase_only=False)
 
