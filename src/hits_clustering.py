@@ -141,9 +141,9 @@ class Clusterer(object):
         labels = []
 
         dfh['d'] = np.sqrt(dfh.x**2+dfh.y**2+dfh.z**2)
-        dfh['r'] = np.sqrt(dfh.x**2+dfh.y**2)
-        dfh['zr'] = np.arctan2(dfh.z, dfh.r)
-        
+        dfh['r'] = np.sqrt(dfh.x**2+dfh.y**2)       
+        #dfh['zr'] = np.arctan2(dfh.z, dfh.r)
+
         rr = dfh['r']/1000      
 
         for loop in range(len(self.model_parameters[3])):
@@ -533,21 +533,21 @@ def predict_event(event_id, hits, train_or_test, truth):
     # Running helix2 in 2 phases hurts our score, so do a single-phase only
     labels_helix2 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix2', model_parameters, one_phase_only=True)
 
-    model_parameters.clear()
-    model_parameters.append(HELIX_UNROLL_R_MODE)
-    model_parameters.append(FEATURE_MATRIX_3)
-    model_parameters.append(SCALED_DISTANCE_3)
-    model_parameters.append([3])
-    print_info(3, model_parameters)
-    labels_helix3 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix3', model_parameters, one_phase_only=True)
+    # model_parameters.clear()
+    # model_parameters.append(HELIX_UNROLL_R_MODE)
+    # model_parameters.append(FEATURE_MATRIX_3)
+    # model_parameters.append(SCALED_DISTANCE_3)
+    # model_parameters.append([3])
+    # print_info(3, model_parameters)
+    # labels_helix3 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix3', model_parameters, one_phase_only=True)
 
-    model_parameters.clear()
-    model_parameters.append(HELIX_UNROLL_R_MODE)
-    model_parameters.append(FEATURE_MATRIX_4)
-    model_parameters.append(SCALED_DISTANCE_4)
-    model_parameters.append([-1])
-    print_info(4, model_parameters)
-    labels_helix4 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix4', model_parameters, one_phase_only=True)
+    # model_parameters.clear()
+    # model_parameters.append(HELIX_UNROLL_R_MODE)
+    # model_parameters.append(FEATURE_MATRIX_4)
+    # model_parameters.append(SCALED_DISTANCE_4)
+    # model_parameters.append([-1])
+    # print_info(4, model_parameters)
+    # labels_helix4 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix4', model_parameters, one_phase_only=True)
 
     model_parameters.clear()
     model_parameters.append(HELIX_UNROLL_R_MODE)
@@ -557,7 +557,8 @@ def predict_event(event_id, hits, train_or_test, truth):
     print_info(5, model_parameters)
     labels_helix5 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix5', model_parameters, one_phase_only=True)
 
-    
+    #R0_SAMPLE_EVENT = [1010, 1015, 1020, 1025, 1030, 1035, 1040, 1045, 1050, 1060, 1070, 1080, 1090]
+
     model_parameters.clear()
     model_parameters.append(HELIX_UNROLL_R0_MODE)
     model_parameters.append(FEATURE_MATRIX_6)
@@ -595,51 +596,159 @@ def predict_event(event_id, hits, train_or_test, truth):
     print_info(9, model_parameters)
     labels_helix9 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix9', model_parameters, one_phase_only=False)
 
+    # model_parameters.clear()
+    # model_parameters.append(HELIX_UNROLL_R0_MODE)
+    # model_parameters.append(FEATURE_MATRIX_6)
+    # model_parameters.append(SCALED_DISTANCE_6)
+    # model_parameters.append([12])  
+    # model_parameters.append([1030])
+    # print_info(10, model_parameters)
+    # labels_helix10 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix10', model_parameters, one_phase_only=False)
+
+    # model_parameters.clear()
+    # model_parameters.append(HELIX_UNROLL_R0_MODE)
+    # model_parameters.append(FEATURE_MATRIX_6)
+    # model_parameters.append(SCALED_DISTANCE_6)
+    # model_parameters.append([-9])  
+    # model_parameters.append([1035])
+    # print_info(11, model_parameters)
+    # labels_helix11 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix11', model_parameters, one_phase_only=False)
+
+    # model_parameters.clear()
+    # model_parameters.append(HELIX_UNROLL_R0_MODE)
+    # model_parameters.append(FEATURE_MATRIX_6)
+    # model_parameters.append(SCALED_DISTANCE_6)
+    # model_parameters.append([10])  
+    # model_parameters.append([1040])
+    # print_info(12, model_parameters)
+    # labels_helix12 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix12', model_parameters, one_phase_only=False)
+
+    # model_parameters.clear()
+    # model_parameters.append(HELIX_UNROLL_R0_MODE)
+    # model_parameters.append(FEATURE_MATRIX_6)
+    # model_parameters.append(SCALED_DISTANCE_6)
+    # model_parameters.append([-3])  
+    # model_parameters.append([1045])
+    # print_info(13, model_parameters)
+    # labels_helix13 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix13', model_parameters, one_phase_only=False)
+
+    # model_parameters.clear()
+    # model_parameters.append(HELIX_UNROLL_R0_MODE)
+    # model_parameters.append(FEATURE_MATRIX_6)
+    # model_parameters.append(SCALED_DISTANCE_6)
+    # model_parameters.append([6])  
+    # model_parameters.append([1050])
+    # print_info(14, model_parameters)
+    # labels_helix14 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix14', model_parameters, one_phase_only=False)
+
+    # model_parameters.clear()
+    # model_parameters.append(HELIX_UNROLL_R0_MODE)
+    # model_parameters.append(FEATURE_MATRIX_6)
+    # model_parameters.append(SCALED_DISTANCE_6)
+    # model_parameters.append([-10])  
+    # model_parameters.append([1060])
+    # print_info(15, model_parameters)
+    # labels_helix15 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix15', model_parameters, one_phase_only=False)
+
+    # model_parameters.clear()
+    # model_parameters.append(HELIX_UNROLL_R0_MODE)
+    # model_parameters.append(FEATURE_MATRIX_6)
+    # model_parameters.append(SCALED_DISTANCE_6)
+    # model_parameters.append([2])  
+    # model_parameters.append([1070])
+    # print_info(16, model_parameters)
+    # labels_helix16 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix16', model_parameters, one_phase_only=False)
+
+    # model_parameters.clear()
+    # model_parameters.append(HELIX_UNROLL_R0_MODE)
+    # model_parameters.append(FEATURE_MATRIX_6)
+    # model_parameters.append(SCALED_DISTANCE_6)
+    # model_parameters.append([8])  
+    # model_parameters.append([1080])
+    # print_info(17, model_parameters)
+    # labels_helix17 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix17', model_parameters, one_phase_only=False)
+
+    # model_parameters.clear()
+    # model_parameters.append(HELIX_UNROLL_R0_MODE)
+    # model_parameters.append(FEATURE_MATRIX_6)
+    # model_parameters.append(SCALED_DISTANCE_6)
+    # model_parameters.append([-2])  
+    # model_parameters.append([1090])
+    # print_info(18, model_parameters)
+    # labels_helix18 = run_helix_unrolling_predictions(event_id, hits, truth, train_or_test + '_helix18', model_parameters, one_phase_only=False)
+
 
     # Merge results from two sets of predictions, removing outliers first
     labels_helix1 = merge.remove_outliers(labels_helix1, hits, print_counts=False)
     labels_helix2 = merge.remove_outliers(labels_helix2, hits, print_counts=False)
-    labels_helix3 = merge.remove_outliers(labels_helix3, hits, print_counts=False)
-    labels_helix4 = merge.remove_outliers(labels_helix4, hits, print_counts=False)
     labels_helix5 = merge.remove_outliers(labels_helix5, hits, print_counts=False)
     labels_helix6 = merge.remove_outliers(labels_helix6, hits, print_counts=False)
     labels_helix7 = merge.remove_outliers(labels_helix7, hits, print_counts=False)
     labels_helix8 = merge.remove_outliers(labels_helix8, hits, print_counts=False)
     labels_helix9 = merge.remove_outliers(labels_helix9, hits, print_counts=False)
+    # labels_helix10 = merge.remove_outliers(labels_helix10, hits, print_counts=False)
+    # labels_helix11 = merge.remove_outliers(labels_helix11, hits, print_counts=False)
+    # labels_helix12 = merge.remove_outliers(labels_helix12, hits, print_counts=False)
+    # labels_helix13 = merge.remove_outliers(labels_helix13, hits, print_counts=False)
+    # labels_helix14 = merge.remove_outliers(labels_helix14, hits, print_counts=False)
+    # labels_helix15 = merge.remove_outliers(labels_helix15, hits, print_counts=False)
+    # labels_helix16 = merge.remove_outliers(labels_helix16, hits, print_counts=False)
+    # labels_helix17 = merge.remove_outliers(labels_helix17, hits, print_counts=False)
+    # labels_helix18 = merge.remove_outliers(labels_helix18, hits, print_counts=False)
     
     
     display_score(event_id, hits, labels_helix1, truth, 'After outlier removal helix1 ')
     display_score(event_id, hits, labels_helix2, truth, 'After outlier removal helix2 ')
-    display_score(event_id, hits, labels_helix3, truth, 'After outlier removal helix3 ')
-    display_score(event_id, hits, labels_helix4, truth, 'After outlier removal helix4 ')
     display_score(event_id, hits, labels_helix5, truth, 'After outlier removal helix5 ')
     display_score(event_id, hits, labels_helix6, truth, 'After outlier removal helix6 ')
     display_score(event_id, hits, labels_helix7, truth, 'After outlier removal helix7 ')
     display_score(event_id, hits, labels_helix8, truth, 'After outlier removal helix8 ')
     display_score(event_id, hits, labels_helix9, truth, 'After outlier removal helix9 ')
+    # display_score(event_id, hits, labels_helix10, truth, 'After outlier removal helix10 ')
+    # display_score(event_id, hits, labels_helix11, truth, 'After outlier removal helix11 ')
+    # display_score(event_id, hits, labels_helix12, truth, 'After outlier removal helix12 ')
+    # display_score(event_id, hits, labels_helix13, truth, 'After outlier removal helix13 ')
+    # display_score(event_id, hits, labels_helix14, truth, 'After outlier removal helix14 ')
+    # display_score(event_id, hits, labels_helix15, truth, 'After outlier removal helix15 ')
+    # display_score(event_id, hits, labels_helix16, truth, 'After outlier removal helix16 ')
+    # display_score(event_id, hits, labels_helix17, truth, 'After outlier removal helix17 ')
+    # display_score(event_id, hits, labels_helix18, truth, 'After outlier removal helix18 ')
 
 
     labels_helix1 = r0o.remove_badr0_tracks(labels_helix1, hits)
     labels_helix2 = r0o.remove_badr0_tracks(labels_helix2, hits)
-    labels_helix3 = r0o.remove_badr0_tracks(labels_helix3, hits)
-    labels_helix4 = r0o.remove_badr0_tracks(labels_helix4, hits)
     labels_helix5 = r0o.remove_badr0_tracks(labels_helix5, hits)
     labels_helix6 = r0o.remove_badr0_tracks(labels_helix6, hits)
     labels_helix7 = r0o.remove_badr0_tracks(labels_helix7, hits)
     labels_helix8 = r0o.remove_badr0_tracks(labels_helix8, hits)
     labels_helix9 = r0o.remove_badr0_tracks(labels_helix9, hits)
-
+    # labels_helix10 = r0o.remove_badr0_tracks(labels_helix10, hits)
+    # labels_helix11 = r0o.remove_badr0_tracks(labels_helix11, hits)
+    # labels_helix12 = r0o.remove_badr0_tracks(labels_helix12, hits)
+    # labels_helix13 = r0o.remove_badr0_tracks(labels_helix13, hits)
+    # labels_helix14 = r0o.remove_badr0_tracks(labels_helix14, hits)
+    # labels_helix15 = r0o.remove_badr0_tracks(labels_helix15, hits)
+    # labels_helix16 = r0o.remove_badr0_tracks(labels_helix16, hits)
+    # labels_helix17 = r0o.remove_badr0_tracks(labels_helix17, hits)
+    # labels_helix18 = r0o.remove_badr0_tracks(labels_helix18, hits)
 
     display_score(event_id, hits, labels_helix1, truth, 'After r0 outlier removal helix1 ')
     display_score(event_id, hits, labels_helix2, truth, 'After r0 outlier removal helix2 ')
-    display_score(event_id, hits, labels_helix3, truth, 'After r0 outlier removal helix3 ')
-    display_score(event_id, hits, labels_helix4, truth, 'After r0 outlier removal helix4 ')
-    display_score(event_id, hits, labels_helix5, truth, 'After r0 outlier removal helix5 ')
+    display_score(event_id, hits, labels_helix5, truth, 'After r0 outlier removal helix5 ')    
     display_score(event_id, hits, labels_helix6, truth, 'After r0 outlier removal helix6 ')
     display_score(event_id, hits, labels_helix7, truth, 'After r0 outlier removal helix7 ')
     display_score(event_id, hits, labels_helix8, truth, 'After r0 outlier removal helix8 ')
     display_score(event_id, hits, labels_helix9, truth, 'After r0 outlier removal helix9 ')
-    
+    # display_score(event_id, hits, labels_helix10, truth, 'After r0 outlier removal helix10 ')
+    # display_score(event_id, hits, labels_helix11, truth, 'After r0 outlier removal helix11 ')
+    # display_score(event_id, hits, labels_helix12, truth, 'After r0 outlier removal helix12 ')    
+    # display_score(event_id, hits, labels_helix13, truth, 'After r0 outlier removal helix13 ')
+    # display_score(event_id, hits, labels_helix14, truth, 'After r0 outlier removal helix14 ')
+    # display_score(event_id, hits, labels_helix15, truth, 'After r0 outlier removal helix15 ')
+    # display_score(event_id, hits, labels_helix16, truth, 'After r0 outlier removal helix16 ')
+    # display_score(event_id, hits, labels_helix17, truth, 'After r0 outlier removal helix17 ')
+    # display_score(event_id, hits, labels_helix18, truth, 'After r0 outlier removal helix18 ')
+ 
 
     labels = merge.heuristic_merge_tracks(labels_helix1, labels_helix2, hits, overwrite_limit=6, print_summary=False)
     display_score(event_id, hits, labels, truth, 'Merged helix2 unrolling for event ')
@@ -654,17 +763,41 @@ def predict_event(event_id, hits, train_or_test, truth):
     display_score(event_id, hits, labels, truth, 'Merged helix8 unrolling for event ')
 
     labels = merge.heuristic_merge_tracks(labels, labels_helix9, hits, overwrite_limit=6, print_summary=False)
-    display_score(event_id, hits, labels, truth, 'Merged helix8 unrolling for event ')
-    
-    labels = merge.heuristic_merge_tracks(labels, labels_helix3, hits, overwrite_limit=6, print_summary=False)
-    display_score(event_id, hits, labels, truth, 'Merged helix3 unrolling for event ')
-
-    labels = merge.heuristic_merge_tracks(labels, labels_helix4, hits, overwrite_limit=6, print_summary=False)
-    display_score(event_id, hits, labels, truth, 'Merged helix4  unrolling for event ')
+    display_score(event_id, hits, labels, truth, 'Merged helix9 unrolling for event ')
 
     labels = merge.heuristic_merge_tracks(labels, labels_helix5, hits, overwrite_limit=6, print_summary=False)
     display_score(event_id, hits, labels, truth, 'Merged helix5 unrolling for event ')
+
+    # labels = merge.heuristic_merge_tracks(labels, labels_helix10, hits, overwrite_limit=6, print_summary=False)
+    # display_score(event_id, hits, labels, truth, 'Merged helix10 unrolling for event ')
     
+    # labels = merge.heuristic_merge_tracks(labels, labels_helix11, hits, overwrite_limit=6, print_summary=False)
+    # display_score(event_id, hits, labels, truth, 'Merged helix11 unrolling for event ')
+
+    # labels = merge.heuristic_merge_tracks(labels, labels_helix12, hits, overwrite_limit=6, print_summary=False)
+    # display_score(event_id, hits, labels, truth, 'Merged helix12 unrolling for event ')
+
+    # labels = merge.heuristic_merge_tracks(labels, labels_helix13, hits, overwrite_limit=6, print_summary=False)
+    # display_score(event_id, hits, labels, truth, 'Merged helix13 unrolling for event ')
+
+    # labels = merge.heuristic_merge_tracks(labels, labels_helix14, hits, overwrite_limit=6, print_summary=False)
+    # display_score(event_id, hits, labels, truth, 'Merged helix14 unrolling for event ')
+    
+    # labels = merge.heuristic_merge_tracks(labels, labels_helix15, hits, overwrite_limit=6, print_summary=False)
+    # display_score(event_id, hits, labels, truth, 'Merged helix15 unrolling for event ')
+
+    # labels = merge.heuristic_merge_tracks(labels, labels_helix16, hits, overwrite_limit=6, print_summary=False)
+    # display_score(event_id, hits, labels, truth, 'Merged helix16 unrolling for event ')
+
+    # labels = merge.heuristic_merge_tracks(labels, labels_helix17, hits, overwrite_limit=6, print_summary=False)
+    # display_score(event_id, hits, labels, truth, 'Merged helix17 unrolling for event ')
+
+    # labels = merge.heuristic_merge_tracks(labels, labels_helix18, hits, overwrite_limit=6, print_summary=False)
+    # display_score(event_id, hits, labels, truth, 'Merged helix18 unrolling for event ')
+
+    # labels = merge.heuristic_merge_tracks(labels, labels_helix5, hits, overwrite_limit=6, print_summary=False)
+    # display_score(event_id, hits, labels, truth, 'Merged helix5 unrolling for event ')
+
     # Straight track extension
     labels = strt.extend_straight_tracks(labels, hits)
     display_score(event_id, hits, labels, truth, 'Merged all unrolling straight-extended for event ')
