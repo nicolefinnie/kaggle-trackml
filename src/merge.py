@@ -1050,16 +1050,24 @@ def find_celloutlier(track, labels, hits, cells):
     
     positive_hhh = hhh_h[hhh_h['direction'] > 0]
     negative_hhh = hhh_h[hhh_h['direction'] < 0]
-    
-    if len(positive_hhh) < len(negative_hhh):
-        outlier_hhh = positive_hhh
-    elif len(negative_hhh) < len(positive_hhh):
+
+    if len(negative_hhh) < len(positive_hhh) and len(negative_hhh) == 1:
         outlier_hhh = negative_hhh
     else:
         outlier_hhh = None
         
     if outlier_hhh is not None:
         final_outliers = outlier_hhh[outlier_hhh['volume_id'] > 9].hit_id.values - 1
+
+    # if len(positive_hhh) < len(negative_hhh):
+    #     outlier_hhh = positive_hhh
+    # elif len(negative_hhh) < len(positive_hhh):
+    #     outlier_hhh = negative_hhh
+    # else:
+    #     outlier_hhh = None
+        
+    # if outlier_hhh is not None:
+    #     final_outliers = outlier_hhh[outlier_hhh['volume_id'] > 9].hit_id.values - 1
     
     return final_outliers
 
@@ -1132,7 +1140,7 @@ def remove_track_outliers(track, labels, hits, cells, aggressive):
             for oix in outlier_slope_ix:
                 labels[oix] = 0
 
-    if False:#True:
+    if aggressive:# would be good to enable by default, but hurts score for now
         outlier_cell_ix = find_celloutlier(track, labels, hits, cells)
         if len(outlier_cell_ix) > 0:
             #print('track ' + str(track) + ' bad volume: ' + str(bad_volume_ix))

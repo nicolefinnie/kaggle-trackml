@@ -195,7 +195,10 @@ def find_circle_curvature(d01x, d01y, d12x, d12y):
     # 2 * (signed) area of the triangle
     k = (x02 * y01 - x01 * y02)
     # radius = product of side lengths / 4 times triangle area
-    return (2 * k) / (a * b * c)
+    if a == 0 or b == 0 or c == 0:
+        return 10 # just a random large curvature value to use to avoid div-by-0
+    else:
+        return (2 * k) / (a * b * c)
 
 def find_track_curvature(track, labels, hits):
     trk_ix = np.where(labels == track)[0]
