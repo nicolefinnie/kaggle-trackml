@@ -10,7 +10,7 @@ def extend_submission(iter, submissions, hits, do_swap=False, limit=0.04):
     df = extend(iter, df, do_swap, limit)
     return df[['event_id', 'hit_id', 'track_id']]       
 
-def try_extend_single_hit_avoid_outliers(track, track_len, hit_ix, labels, hits, use_scoring):
+def try_extend_single_hit_avoid_outliers(track, track_len, hit_ix, labels, hits):
     """
     This is a variant that tries to avoid extending our track when the target hit looks
     like it would likely be an outlier, for example if it contains the exact same z-value
@@ -56,31 +56,20 @@ def try_extend_single_hit_avoid_outliers(track, track_len, hit_ix, labels, hits,
         if abs2 < min_abs or abs2 > max_abs or (zrs[aix] > 0 and hit_zr < 0) or (zrs[aix] < 0 and hit_zr > 0):
             #print('SKIP: existing mean zr: ' + str(zrs[aix]) + ', hit_zr: ' + str(hit_zr) + ', min: ' + str(min_abs) + ', max: ' + str(max_abs))
             return (labels, track_len)
-    if use_scoring:
-        outlier_modifier = 0.75
-        orig_track = labels[hit_ix]
-        labels[hit_ix] = track
-        new_score = score.calculate_track_score(track, labels, hits, outlier_modifier=outlier_modifier, outlier_ix=hit_ix)
-        labels[hit_ix] = orig_track
-        if orig_track != 0:
-            orig_score = score.calculate_track_score(orig_track, labels, hits, outlier_modifier=outlier_modifier, outlier_ix=hit_ix)
-        else:
-            orig_score = 0
 
-        if new_score >= orig_score:
-            labels[hit_ix] = track
-            track_len = track_len + 1
+    outlier_modifier = 0.75
+    orig_track = labels[hit_ix]
+    labels[hit_ix] = track
+    new_score = score.calculate_track_score(track, labels, hits, outlier_modifier=outlier_modifier, outlier_ix=hit_ix)
+    labels[hit_ix] = orig_track
+    if orig_track != 0:
+        orig_score = score.calculate_track_score(orig_track, labels, hits, outlier_modifier=outlier_modifier, outlier_ix=hit_ix)
     else:
-        orig_track = labels[hit_ix]
-        if orig_track == 0:
-            labels[hit_ix] = track
-        else:
-            # If the hit is already occupied by another track, only take ownership
-            # of the hit if our track is longer than the current-occupying track.
-            orig_track_len = len(np.where(labels==orig_track)[0])
-            if track_len > orig_track_len:
-                labels[hit_ix] = track
-                track_len = track_len + 1
+        orig_score = 0
+
+    if new_score >= orig_score:
+        labels[hit_ix] = track
+        track_len = track_len + 1
                 
     return (labels, track_len)
 
@@ -186,8 +175,14 @@ def _one_cone_slice(df, df1, angle, delta_angle, limit=0.04, num_neighbours=18, 
             df_ix = hit_ids[n] - 1
             # Un-comment this to see if we are extending the track properly
             #is_good = (truth.loc[df_ix, 'particle_id'] == truth_particle_id)
+            ### TMP ###
+            #if cur_track_len > 20: break
+            ### TMP ###
 
-            (labels, cur_track_len) = try_extend_single_hit(p, cur_track_len, df_ix, labels, df, use_scoring)
+            if use_scoring:
+                (labels, cur_track_len) = try_extend_single_hit_avoid_outliers(p, cur_track_len, df_ix, labels, df)
+            else:
+                (labels, cur_track_len) = try_extend_single_hit(p, cur_track_len, df_ix, labels, df, use_scoring)
 
         ## extend end point
         ns = tree.query([[c1, s1, r1, zr1]], k=min(num_neighbours, min_num_neighbours), return_distance=False)
@@ -202,7 +197,14 @@ def _one_cone_slice(df, df1, angle, delta_angle, limit=0.04, num_neighbours=18, 
             # Un-comment this to see if we are extending the track properly
             #is_good = (truth.loc[df_ix, 'particle_id'] == truth_particle_id)
 
-            (labels, cur_track_len) = try_extend_single_hit(p, cur_track_len, df_ix, labels, df, use_scoring)
+            ### TMP ###
+            #if cur_track_len > 23: break
+            ### TMP ###
+
+            if use_scoring:
+                (labels, cur_track_len) = try_extend_single_hit_avoid_outliers(p, cur_track_len, df_ix, labels, df)
+            else:
+                (labels, cur_track_len) = try_extend_single_hit(p, cur_track_len, df_ix, labels, df, use_scoring)
 
     df['track_id'] = labels
 

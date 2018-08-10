@@ -986,10 +986,88 @@ def remove_track_outliers_slope(track, labels, hits, debug=False):
 
     return final_outliers
 
+# a function that calculates the cluster size and makes a pixel matrix
+def pixel_matrix(pixel_cluster, show=False):
+    # cluster size
+    min0 = min(pixel_cluster['ch0'])
+    max0 = max(pixel_cluster['ch0'])
+    min1 = min(pixel_cluster['ch1'])
+    max1 = max(pixel_cluster['ch1'])
+    # the matrix
+    matrix = np.zeros(((max1-min1+3),(max0-min0+3)))
+    for pixel in pixel_cluster.values :
+        i0 = int(pixel[1]-min0+1)
+        i1 = int(pixel[2]-min1+1)
+        value = pixel[3]
+        #deposit charge
+        matrix[i1][i0] = value 
+    # return the matris
+    if show :
+        fig = plt.figure()
+        ax = fig.add_subplot(1,1,1)
+        ax.set_aspect('equal')
+        plt.imshow(matrix, interpolation='nearest', cmap=plt.cm.YlOrRd)
+        plt.colorbar()
+        plt.show()
+    return matrix, max0-min0+1, max1-min1+1
+
+def find_direction(matrix, axis=0,invalid_val=-1):
+    #compare the left most non-zero value and the right most non-zero value
+    mask = matrix!=0
+    non_zero_idx = np.where(mask.any(axis=axis), mask.argmax(axis=axis), invalid_val)
+    #print(non_zero_idx)
+    i = invalid_val
+    j = invalid_val
+    direction = 0
+    for index in range(len(non_zero_idx)):
+        if non_zero_idx[index] != invalid_val:
+            i = non_zero_idx[index]
+        if non_zero_idx[-index-1] != invalid_val:
+            j = non_zero_idx[-index-1]
+        if i != invalid_val and j != invalid_val:
+            direction = i - j
+            break
+            
+    return direction
     
-def remove_track_outliers(track, labels, hits, aggressive):
+def find_celloutlier(track, labels, hits, cells):
+    final_outliers = []
+    direction_list = []
+
+    hhh_ix = np.where(labels == track)
+    hhh_h = hits.loc[hhh_ix].sort_values('z')
+    
+    def set_direction(hit_id):
+        pixel_cluster = cells[cells['hit_id']==hit_id]
+        matrix, width, length = pixel_matrix(pixel_cluster)
+        direction = find_direction(matrix)
+        if direction == 0 and matrix.shape[1]>3:
+            direction = find_direction(matrix, axis=1)
+        return direction
+            
+        
+    hhh_h['direction'] = hhh_h.apply(lambda row: set_direction(row['hit_id']), axis=1)
+    
+    positive_hhh = hhh_h[hhh_h['direction'] > 0]
+    negative_hhh = hhh_h[hhh_h['direction'] < 0]
+    
+    if len(positive_hhh) < len(negative_hhh):
+        outlier_hhh = positive_hhh
+    elif len(negative_hhh) < len(positive_hhh):
+        outlier_hhh = negative_hhh
+    else:
+        outlier_hhh = None
+        
+    if outlier_hhh is not None:
+        final_outliers = outlier_hhh[outlier_hhh['volume_id'] > 9].hit_id.values - 1
+    
+    return final_outliers
+
+    
+def remove_track_outliers(track, labels, hits, cells, aggressive):
     labels = np.copy(labels)
     found_bad_volume = 0
+    found_bad_cell = 0
     found_bad_dimension = 0
     found_bad_slope = 0
     found_bad_z = 0
@@ -1054,6 +1132,14 @@ def remove_track_outliers(track, labels, hits, aggressive):
             for oix in outlier_slope_ix:
                 labels[oix] = 0
 
+    if False:#True:
+        outlier_cell_ix = find_celloutlier(track, labels, hits, cells)
+        if len(outlier_cell_ix) > 0:
+            #print('track ' + str(track) + ' bad volume: ' + str(bad_volume_ix))
+            found_bad_cell = found_bad_cell + len(outlier_cell_ix)
+            for ocix in outlier_cell_ix:
+                labels[ocix] = 0
+
     if aggressive:
         # Next analysis, from remaining hits, sort by 'z' (roughly time-based),
         # check for anomolies in other dimensions.
@@ -1073,7 +1159,7 @@ def remove_track_outliers(track, labels, hits, aggressive):
             for oix in outlier_ix:
                 labels[oix] = 0
             
-    return (labels, found_bad_volume, found_bad_dimension, found_bad_z, found_bad_slope, found_bad_zr)
+    return (labels, found_bad_volume, found_bad_dimension, found_bad_z, found_bad_slope, found_bad_zr, found_bad_cell)
 
 def remove_small_tracks(labels, smallest_track_size=2):
     # Remove small tracks that provide little value, and mostly just cause noise.
@@ -1086,7 +1172,7 @@ def remove_small_tracks(labels, smallest_track_size=2):
     return (labels, count_small_tracks)
 
 
-def remove_outliers(labels, hits, smallest_track_size=2, aggressive=False, print_counts=True):
+def remove_outliers(labels, hits, cells, smallest_track_size=2, aggressive=False, print_counts=True):
     tracks = np.unique(labels)
     hits['z_abs'] = hits.z.abs()
     hits['r'] = np.sqrt(hits.x**2+hits.y**2)
@@ -1098,17 +1184,19 @@ def remove_outliers(labels, hits, smallest_track_size=2, aggressive=False, print
     count_rem_slope = 0
     count_small_tracks = 0
     count_zr = 0
+    count_cell = 0
     for track in tracks:
         if track == 0:
             continue
         track_hits = np.where(labels == track)[0]
         if len(track_hits) > 3:
-            (labels, c1, c2, c3, c4, c5) = remove_track_outliers(track, labels, hits, aggressive)
+            (labels, c1, c2, c3, c4, c5, c6) = remove_track_outliers(track, labels, hits, cells, aggressive)
             count_rem_volume = count_rem_volume + c1
             count_rem_dimension = count_rem_dimension + c2
             count_duplicatez = count_duplicatez + c3
             count_rem_slope = count_rem_slope + c4
             count_zr = count_zr + c5
+            count_cell = count_cell + c6
 
     # Remove small tracks, we do not get any score for those. This is done
     # last, in case removing the outliers (above) removed enough hits
@@ -1116,6 +1204,7 @@ def remove_outliers(labels, hits, smallest_track_size=2, aggressive=False, print
     (labels, count_small_tracks) = remove_small_tracks(labels, smallest_track_size=smallest_track_size)
 
     if print_counts:
+        print('Total removed due to bad cells: ' + str(count_cell))
         print('Total removed due to bad volumes: ' + str(count_rem_volume))
         print('Total removed due to bad zr values: ' + str(count_zr))
         print('Total removed due to bad dimensions: ' + str(count_rem_dimension))

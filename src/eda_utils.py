@@ -49,6 +49,27 @@ def compare_track_to_truth(track, labels, hits, truth):
         tdf = tdf[['x','y', 'z', 'zr', 'volume_id', 'layer_id']]
         print(tdf)
 
+def track_distance_from_truth(track, labels, hits, truth):
+    hit_ix = np.where(labels == track)[0]
+    truth_ix = get_truth_for_track(track, labels, truth)
+
+    arr_s1 = np.copy(hit_ix)
+    arr_s1.sort()
+    arr_s2 = np.copy(truth_ix)
+    arr_s2.sort()
+
+    correct = 0
+    incorrect = 0
+    is_match = np.array_equal(arr_s1, arr_s2)
+    if not is_match:
+        for hit in arr_s1:
+            if hit in arr_s2:
+                correct = correct + 1
+            else:
+                incorrect = incorrect + 1
+
+    return (is_match, correct, incorrect)
+
 def graph_my_track(track, labels, hits, truth=None):
     hit_ix = np.where(labels == track)[0]
     df = hits.loc[hit_ix]
