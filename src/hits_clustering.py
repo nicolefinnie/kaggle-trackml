@@ -44,6 +44,8 @@ FEATURE_MATRIX_5 = ['sina1', 'cosa1', 'r0', 'z3', 'xd', 'yd', 'px', 'py']
 SCALED_DISTANCE_6 = [1,       1,       0.5, 0.00175, 0.00175] 
 FEATURE_MATRIX_6 = ['sina1', 'cosa1', 'zarc', 'px', 'py']
 
+SCALED_DISTANCE_7 = [1,       1,       0.5,  0.00175, 0.00175] 
+FEATURE_MATRIX_7 = ['sina1', 'cosa1', 'zarc2', 'px', 'py']
 
 STEPRR = 0.03
 
@@ -203,10 +205,6 @@ class Clusterer(object):
                             dfh['a1'] = dfh['a0'] - np.arccos(dfh['cos_theta'])
                         else:
                             dfh['a1'] = dfh['a0'] + np.arccos(dfh['cos_theta'])
-                    
-                        # (x0,y0) the centre of the helix circle
-                        #dfh['x0'] = dfh.x + r0*np.cos(dfh.a0)*np.cos(dfh.a1) + r0*np.sin(dfh.a0)*np.sin(dfh.a1)
-                        #dfh['y0'] = dfh.y + r0*np.cos(dfh.a0)*np.sin(dfh.a1) - r0*np.sin(dfh.a0)*np.cos(dfh.a1)
 
                         # helix parameter space circling around the z-axis
                         dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
@@ -227,6 +225,10 @@ class Clusterer(object):
                         #dfh['zarc'] = zarc
                         dfh['zarc'] = np.log1p(np.absolute(dfh.zshift/ (np.arcsin(dfh.cos_theta) * 2 * r0 )))*np.sign(dfh.zshift)
                         
+                        # 1/np.sqrt(sin(theta0)) correction term for the azimuthal angle on the x-y plane projection
+                        dfh['zarc2'] = dfh.zshift/ (np.arcsin(dfh.cos_theta) * 2 * r0 ) * np.sqrt(np.sin(np.arctan2(dfh.r, dfh.zshift)))
+                         
+
                         ss = StandardScaler()
                         dfs = ss.fit_transform(dfh[self.model_parameters[1]].values)
                         dfs = np.multiply(dfs, self.model_parameters[2])
@@ -474,12 +476,6 @@ def run_helix_unrolling_predictions(event_id, hits, cells, truth, label_identifi
         (labels) = run_predictions(event_id, labels, hits, cells, truth, model, label_file_root2, unmatched_only=True, filter_hits=False, track_extension_limits=None)
         display_score(event_id, hits, labels, truth, '2nd pass score for event ')
 
-        # Un-comment this if you want to see the quality of the seeds generated.
-        #seed_length = 5
-        #my_volumes = [7, 8, 9]
-        #labels = sd.filter_invalid_tracks(labels, hits, my_volumes, seed_length)
-        #sd.count_truth_track_seed_hits(labels, truth, seed_length, print_results=True)
-
     # Start with straight-track extension, it is more accurate but does not find quite as much.
     labels = strt.extend_straight_tracks(labels, hits)
     message = 'After straight track extension score for event '
@@ -497,11 +493,6 @@ def run_helix_unrolling_predictions(event_id, hits, cells, truth, label_identifi
 
     df = pd.DataFrame(labels)
     df.to_csv(label_file, index=False, header=['label'])
-
-    # label_file_root3 = label_file_root + '_phase3'
-    # model = Clusterer(model_parameters)
-    # (labels) = run_predictions(event_id, labels, hits, truth, model, label_file_root3, unmatched_only=True, merge_labels=True, filter_hits=False, track_extension=True)
-    # display_score(event_id, hits, labels, truth, '3rd pass score for event ')
 
     # # Save the generated labels, can avoid re-generation next run.
 
@@ -806,6 +797,24 @@ def predict_event(event_id, hits, cells, train_or_test, truth):
     # print_info(29, model_parameters)
     # labels_helix29 = run_helix_unrolling_predictions(event_id, hits, cells, truth, train_or_test + '_helix29', model_parameters, one_phase_only=False)
 
+    model_parameters.clear()
+    model_parameters.append(HELIX_UNROLL_R0_MODE)
+    model_parameters.append(FEATURE_MATRIX_7)
+    model_parameters.append(SCALED_DISTANCE_7)
+    model_parameters.append([0])  
+    model_parameters.append([3820])
+    print_info(42, model_parameters)
+    labels_helix42 = run_helix_unrolling_predictions(event_id, hits, cells, truth, train_or_test + '_helix42', model_parameters, one_phase_only=False)
+
+    model_parameters.clear()
+    model_parameters.append(HELIX_UNROLL_R0_MODE)
+    model_parameters.append(FEATURE_MATRIX_7)
+    model_parameters.append(SCALED_DISTANCE_7)
+    model_parameters.append([3])  
+    model_parameters.append([3720])
+    print_info(43, model_parameters)
+    labels_helix43 = run_helix_unrolling_predictions(event_id, hits, cells, truth, train_or_test + '_helix43', model_parameters, one_phase_only=False)
+
     labels_helix1 = merge.remove_outliers(labels_helix1, hits, cells, aggressive=True, print_counts=False)
     display_score(event_id, hits, labels_helix1, truth, 'After outlier removal helix1 ')
     labels_helix2 = merge.remove_outliers(labels_helix2, hits, cells, aggressive=True, print_counts=False)
@@ -845,6 +854,8 @@ def predict_event(event_id, hits, cells, train_or_test, truth):
     all_labels.append(labels_helix18)
     all_labels.append(labels_helix19)
     all_labels.append(labels_helix20)
+    # all_labels.append(labels_helix42)
+    # all_labels.append(labels_helix43)    
     all_labels.append(labels_helix5)
     all_labels.append(labels_helix3)
     all_labels.append(labels_helix4)
@@ -879,167 +890,6 @@ def predict_event(event_id, hits, cells, train_or_test, truth):
     labels = free.assign_free_hits(labels, hits)
     display_score(event_id, hits, labels, truth, 'Merged free-hit-reassigned score for event ')
 
-    # Merge results from two sets of predictions, removing outliers first
-    # labels_helix1 = merge.remove_outliers(labels_helix1, hits, cells, print_counts=False)
-    # labels_helix2 = merge.remove_outliers(labels_helix2, hits, cells, print_counts=False)
-    # labels_helix3 = merge.remove_outliers(labels_helix3, hits, cells, print_counts=False)
-    # labels_helix4 = merge.remove_outliers(labels_helix4, hits, cells, print_counts=False)
-    # labels_helix5 = merge.remove_outliers(labels_helix5, hits, cells, print_counts=False)
-    # labels_helix6 = merge.remove_outliers(labels_helix6, hits, cells, print_counts=False)
-    # labels_helix7 = merge.remove_outliers(labels_helix7, hits, cells, print_counts=False)
-    # labels_helix8 = merge.remove_outliers(labels_helix8, hits, cells, print_counts=False)
-    # labels_helix9 = merge.remove_outliers(labels_helix9, hits, cells, print_counts=False)
-    # labels_helix10 = merge.remove_outliers(labels_helix10, hits, cells, print_counts=False)
-    # labels_helix11 = merge.remove_outliers(labels_helix11, hits, cells, print_counts=False)
-    # labels_helix12 = merge.remove_outliers(labels_helix12, hits, cells, print_counts=False)
-    # labels_helix13 = merge.remove_outliers(labels_helix13, hits, cells, print_counts=False)
-    # labels_helix14 = merge.remove_outliers(labels_helix14, hits, cells, print_counts=False)
-    # labels_helix15 = merge.remove_outliers(labels_helix15, hits, cells, print_counts=False)
-    # labels_helix16 = merge.remove_outliers(labels_helix16, hits, cells, print_counts=False)
-    # labels_helix17 = merge.remove_outliers(labels_helix17, hits, cells, print_counts=False)
-    # labels_helix18 = merge.remove_outliers(labels_helix18, hits, cells, print_counts=False)
-    
-    
-    # display_score(event_id, hits, labels_helix1, truth, 'After outlier removal helix1 ')
-    # display_score(event_id, hits, labels_helix2, truth, 'After outlier removal helix2 ')
-    # display_score(event_id, hits, labels_helix3, truth, 'After outlier removal helix3 ')
-    # display_score(event_id, hits, labels_helix4, truth, 'After outlier removal helix4 ')
-    # display_score(event_id, hits, labels_helix5, truth, 'After outlier removal helix5 ')
-    # display_score(event_id, hits, labels_helix6, truth, 'After outlier removal helix6 ')
-    # display_score(event_id, hits, labels_helix7, truth, 'After outlier removal helix7 ')
-    # display_score(event_id, hits, labels_helix8, truth, 'After outlier removal helix8 ')
-    # display_score(event_id, hits, labels_helix9, truth, 'After outlier removal helix9 ')
-    # display_score(event_id, hits, labels_helix10, truth, 'After outlier removal helix10 ')
-    # display_score(event_id, hits, labels_helix11, truth, 'After outlier removal helix11 ')
-    # display_score(event_id, hits, labels_helix12, truth, 'After outlier removal helix12 ')
-    # display_score(event_id, hits, labels_helix13, truth, 'After outlier removal helix13 ')
-    # display_score(event_id, hits, labels_helix14, truth, 'After outlier removal helix14 ')
-    # display_score(event_id, hits, labels_helix15, truth, 'After outlier removal helix15 ')
-    # display_score(event_id, hits, labels_helix16, truth, 'After outlier removal helix16 ')
-    # display_score(event_id, hits, labels_helix17, truth, 'After outlier removal helix17 ')
-    # display_score(event_id, hits, labels_helix18, truth, 'After outlier removal helix18 ')
-
-
-    # labels_helix1 = r0o.remove_badr0_tracks(labels_helix1, hits)
-    # labels_helix2 = r0o.remove_badr0_tracks(labels_helix2, hits)
-    # labels_helix3 = r0o.remove_badr0_tracks(labels_helix3, hits)
-    # labels_helix4 = r0o.remove_badr0_tracks(labels_helix4, hits)
-    # labels_helix5 = r0o.remove_badr0_tracks(labels_helix5, hits)
-    #labels_helix6 = r0o.remove_badr0_tracks(labels_helix6, hits)
-    #labels_helix7 = r0o.remove_badr0_tracks(labels_helix7, hits)
-    #labels_helix8 = r0o.remove_badr0_tracks(labels_helix8, hits)
-    #labels_helix9 = r0o.remove_badr0_tracks(labels_helix9, hits)
-    # labels_helix10 = r0o.remove_badr0_tracks(labels_helix10, hits)
-    # labels_helix11 = r0o.remove_badr0_tracks(labels_helix11, hits)
-    # labels_helix12 = r0o.remove_badr0_tracks(labels_helix12, hits)
-    # labels_helix13 = r0o.remove_badr0_tracks(labels_helix13, hits)
-    # labels_helix14 = r0o.remove_badr0_tracks(labels_helix14, hits)
-    # labels_helix15 = r0o.remove_badr0_tracks(labels_helix15, hits)
-    # labels_helix16 = r0o.remove_badr0_tracks(labels_helix16, hits)
-    # labels_helix17 = r0o.remove_badr0_tracks(labels_helix17, hits)
-    # labels_helix18 = r0o.remove_badr0_tracks(labels_helix18, hits)
-
-    # display_score(event_id, hits, labels_helix1, truth, 'After r0 outlier removal helix1 ')
-    # display_score(event_id, hits, labels_helix2, truth, 'After r0 outlier removal helix2 ')
-    # display_score(event_id, hits, labels_helix3, truth, 'After r0 outlier removal helix3 ')
-    # display_score(event_id, hits, labels_helix4, truth, 'After r0 outlier removal helix4 ')
-    # display_score(event_id, hits, labels_helix5, truth, 'After r0 outlier removal helix5 ')    
-    # display_score(event_id, hits, labels_helix6, truth, 'After r0 outlier removal helix6 ')
-    # display_score(event_id, hits, labels_helix7, truth, 'After r0 outlier removal helix7 ')
-    # display_score(event_id, hits, labels_helix8, truth, 'After r0 outlier removal helix8 ')
-    # display_score(event_id, hits, labels_helix9, truth, 'After r0 outlier removal helix9 ')
-    # display_score(event_id, hits, labels_helix10, truth, 'After r0 outlier removal helix10 ')
-    # display_score(event_id, hits, labels_helix11, truth, 'After r0 outlier removal helix11 ')
-    # display_score(event_id, hits, labels_helix12, truth, 'After r0 outlier removal helix12 ')    
-    # display_score(event_id, hits, labels_helix13, truth, 'After r0 outlier removal helix13 ')
-    # display_score(event_id, hits, labels_helix14, truth, 'After r0 outlier removal helix14 ')
-    # display_score(event_id, hits, labels_helix15, truth, 'After r0 outlier removal helix15 ')
-    # display_score(event_id, hits, labels_helix16, truth, 'After r0 outlier removal helix16 ')
-    # display_score(event_id, hits, labels_helix17, truth, 'After r0 outlier removal helix17 ')
-    # display_score(event_id, hits, labels_helix18, truth, 'After r0 outlier removal helix18 ')
- 
-    # labels_helix1 = r0o.remove_bad_curvature_tracks(labels_helix1, hits, aggressive=True)
-    # labels_helix2 = r0o.remove_bad_curvature_tracks(labels_helix2, hits, aggressive=True)
-    # labels_helix3 = r0o.remove_bad_curvature_tracks(labels_helix3, hits, aggressive=True)
-    # labels_helix4 = r0o.remove_bad_curvature_tracks(labels_helix4, hits, aggressive=True)
-    # labels_helix5 = r0o.remove_bad_curvature_tracks(labels_helix5, hits, aggressive=True)
-    #labels_helix6 = r0o.remove_bad_curvature_tracks(labels_helix6, hits, aggressive=False)
-    #labels_helix7 = r0o.remove_bad_curvature_tracks(labels_helix7, hits, aggressive=False)
-    #labels_helix8 = r0o.remove_bad_curvature_tracks(labels_helix8, hits, aggressive=False)
-    #labels_helix9 = r0o.remove_bad_curvature_tracks(labels_helix9, hits, aggressive=False)
-
-    # display_score(event_id, hits, labels_helix1, truth, 'After curv outlier removal helix1 ')
-    # display_score(event_id, hits, labels_helix2, truth, 'After curv outlier removal helix2 ')
-    # display_score(event_id, hits, labels_helix3, truth, 'After curv outlier removal helix3 ')
-    # display_score(event_id, hits, labels_helix4, truth, 'After curv outlier removal helix4 ')
-    # display_score(event_id, hits, labels_helix5, truth, 'After curv outlier removal helix5 ')
-    # display_score(event_id, hits, labels_helix6, truth, 'After curv outlier removal helix6 ')
-    # display_score(event_id, hits, labels_helix7, truth, 'After curv outlier removal helix7 ')
-    # display_score(event_id, hits, labels_helix8, truth, 'After curv outlier removal helix8 ')
-    # display_score(event_id, hits, labels_helix9, truth, 'After curv outlier removal helix9 ')
-
-    # labels = merge.heuristic_merge_tracks(labels_helix1, labels_helix2, hits, overwrite_limit=6, print_summary=False)
-    # display_score(event_id, hits, labels, truth, 'Merged helix2 unrolling for event ')
-
-    # labels = merge.heuristic_merge_tracks(labels, labels_helix6, hits, overwrite_limit=6, print_summary=False)
-    # display_score(event_id, hits, labels, truth, 'Merged helix6 unrolling for event ')
-    
-    # labels = merge.heuristic_merge_tracks(labels, labels_helix7, hits, overwrite_limit=6, print_summary=False)
-    # display_score(event_id, hits, labels, truth, 'Merged helix7 unrolling for event ')
-
-    # labels = merge.heuristic_merge_tracks(labels, labels_helix8, hits, overwrite_limit=6, print_summary=False)
-    # display_score(event_id, hits, labels, truth, 'Merged helix8 unrolling for event ')
-
-    # labels = merge.heuristic_merge_tracks(labels, labels_helix9, hits, overwrite_limit=6, print_summary=False)
-    # display_score(event_id, hits, labels, truth, 'Merged helix9 unrolling for event ')
-
-    # labels = merge.heuristic_merge_tracks(labels, labels_helix5, hits, overwrite_limit=6, print_summary=False)
-    # display_score(event_id, hits, labels, truth, 'Merged helix5 unrolling for event ')
-
-    # labels = merge.heuristic_merge_tracks(labels, labels_helix3, hits, overwrite_limit=6, print_summary=False)
-    # display_score(event_id, hits, labels, truth, 'Merged helix3 unrolling for event ')
-
-    # labels = merge.heuristic_merge_tracks(labels, labels_helix4, hits, overwrite_limit=6, print_summary=False)
-    # display_score(event_id, hits, labels, truth, 'Merged helix4 unrolling for event ')
-
-    # labels = merge.heuristic_merge_tracks(labels, labels_helix10, hits, overwrite_limit=6, print_summary=False)
-    # display_score(event_id, hits, labels, truth, 'Merged helix10 unrolling for event ')
-    
-    # labels = merge.heuristic_merge_tracks(labels, labels_helix11, hits, overwrite_limit=6, print_summary=False)
-    # display_score(event_id, hits, labels, truth, 'Merged helix11 unrolling for event ')
-
-    # labels = merge.heuristic_merge_tracks(labels, labels_helix12, hits, overwrite_limit=6, print_summary=False)
-    # display_score(event_id, hits, labels, truth, 'Merged helix12 unrolling for event ')
-
-    # labels = merge.heuristic_merge_tracks(labels, labels_helix13, hits, overwrite_limit=6, print_summary=False)
-    # display_score(event_id, hits, labels, truth, 'Merged helix13 unrolling for event ')
-
-    # labels = merge.heuristic_merge_tracks(labels, labels_helix14, hits, overwrite_limit=6, print_summary=False)
-    # display_score(event_id, hits, labels, truth, 'Merged helix14 unrolling for event ')
-    
-    # labels = merge.heuristic_merge_tracks(labels, labels_helix15, hits, overwrite_limit=6, print_summary=False)
-    # display_score(event_id, hits, labels, truth, 'Merged helix15 unrolling for event ')
-
-    # labels = merge.heuristic_merge_tracks(labels, labels_helix16, hits, overwrite_limit=6, print_summary=False)
-    # display_score(event_id, hits, labels, truth, 'Merged helix16 unrolling for event ')
-
-    # labels = merge.heuristic_merge_tracks(labels, labels_helix17, hits, overwrite_limit=6, print_summary=False)
-    # display_score(event_id, hits, labels, truth, 'Merged helix17 unrolling for event ')
-
-    # labels = merge.heuristic_merge_tracks(labels, labels_helix18, hits, overwrite_limit=6, print_summary=False)
-    # display_score(event_id, hits, labels, truth, 'Merged helix18 unrolling for event ')
-
-    # labels = merge.heuristic_merge_tracks(labels, labels_helix5, hits, overwrite_limit=6, print_summary=False)
-    # display_score(event_id, hits, labels, truth, 'Merged helix5 unrolling for event ')
-
-    # Straight track extension
-    # labels = strt.extend_straight_tracks(labels, hits)
-    # display_score(event_id, hits, labels, truth, 'Merged all unrolling straight-extended for event ')
-
-
-    # labels = free.assign_free_hits(labels, hits)
-    # display_score(event_id, hits, labels, truth, 'Merged free-hit-reassigned score for event ')
-
 
     return labels
 
@@ -1055,17 +905,6 @@ def run_single_threaded_training(skip, nevents):
 
         one_submission = create_one_event_submission(event_id, hits, labels)
         score = score_event(truth, one_submission)
-
-        # labels = merge.heuristic_merge_tracks(labels, labels_cone, print_summary=False)
-        # one_submission = create_one_event_submission(event_id, hits, labels)
-        # score = score_event(truth, one_submission)
-        # print("Merged All unrolling and cone slicing for event %d: %.8f" % (event_id, score))
-
-        # Un-comment this if you want to see the quality of the seeds generated.
-        #seed_length = 5
-        #my_volumes = [7, 8, 9]
-        #labels = sd.filter_invalid_tracks(labels, hits, my_volumes, seed_length)
-        #sd.count_truth_track_seed_hits(labels, truth, seed_length, print_results=True)
 
         # Append the final submission for this event, as well as the score.
         dataset_submissions.append(one_submission)
