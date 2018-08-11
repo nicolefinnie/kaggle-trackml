@@ -1140,7 +1140,7 @@ def remove_track_outliers(track, labels, hits, cells, aggressive):
             for oix in outlier_slope_ix:
                 labels[oix] = 0
 
-    if aggressive:# would be good to enable by default, but hurts score for now
+    if False:#aggressive:# would be good to enable by default, but hurts score for now
         outlier_cell_ix = find_celloutlier(track, labels, hits, cells)
         if len(outlier_cell_ix) > 0:
             #print('track ' + str(track) + ' bad volume: ' + str(bad_volume_ix))
