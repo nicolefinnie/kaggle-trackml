@@ -1083,7 +1083,7 @@ def remove_track_outliers(track, labels, hits, cells, aggressive):
 
     # Check if the sorted hits (on z-axis) go through the volumes
     # and layers in the expected order
-    if aggressive:
+    if False:#aggressive:
         bad_volume_ix = find_invalid_volumes(track, labels, hits)
         if len(bad_volume_ix) > 0:
             #print('track ' + str(track) + ' bad volume: ' + str(bad_volume_ix))
@@ -1111,7 +1111,7 @@ def remove_track_outliers(track, labels, hits, cells, aggressive):
             #         for oix in outlier_zr:
             #             labels[oix] = 0
 
-    if aggressive:
+    if False:#aggressive:
         # Check if the sorted hits (on z-axis) go through the volumes
         # and layers in the expected order
         duplicatez_ix = find_duplicate_z(track, labels, hits)
@@ -1121,7 +1121,7 @@ def remove_track_outliers(track, labels, hits, cells, aggressive):
             for bzix in duplicatez_ix:
                 labels[bzix] = 0
 
-    if True:
+    if aggressive:#True:
         # Check if the sorted hits (on z-axis) go through the volumes
         # and layers in the expected order
         duplicatez_ix = find_duplicate_z_using_zr(track, labels, hits)
@@ -1131,7 +1131,7 @@ def remove_track_outliers(track, labels, hits, cells, aggressive):
             for bzix in duplicatez_ix:
                 labels[bzix] = 0
 
-    if True:
+    if aggressive:#True:
         # Check the helix slope, discard hits that do not match
         outlier_slope_ix = remove_track_outliers_slope(track, labels, hits)
         if len(outlier_slope_ix) > 0:
@@ -1148,7 +1148,7 @@ def remove_track_outliers(track, labels, hits, cells, aggressive):
             for ocix in outlier_cell_ix:
                 labels[ocix] = 0
 
-    if aggressive:
+    if False:#aggressive:
         # Next analysis, from remaining hits, sort by 'z' (roughly time-based),
         # check for anomolies in other dimensions.
         outlier_ix = find_dimension_outlier(track, labels, hits, 'y')

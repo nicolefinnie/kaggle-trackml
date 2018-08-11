@@ -277,3 +277,49 @@ def remove_bad_curvature_tracks(labels, hits, aggressive):
         labels[labels == reject] = 0
     #print('Removed ' + str(hit_count) + ' hits from those tracks')
     return labels
+
+def split_tracks_based_on_quality(labels, hits):
+    """Split input tracks into 3 categories - strong, medium, weak.
+    Splitting is determined mainly by how consistent the track helix curvature is."""
+    strong_tracks = []
+    medium_tracks = []
+    weak_tracks = []
+    hits['z_abs'] = hits.z.abs()
+    tracks, counts = np.unique(labels, return_counts=True)
+    strong_labels = np.zeros_like(labels)
+    medium_labels = np.zeros_like(labels)
+    weak_labels = np.zeros_like(labels)
+    for ix, track in enumerate(tracks):
+        if track == 0: continue
+        if counts[ix] < 5:
+            if counts[ix] > 3:
+                medium_tracks.append(track)
+            # else, discard, too short.
+            continue
+        (curv1, curv2, curv3) = find_track_curvature(track, labels, hits)
+        if np.sign(curv1) != np.sign(curv2) or np.sign(curv1) != np.sign(curv3):
+            weak_tracks.append(track)
+            continue
+
+        c1 = min(abs(curv1), abs(curv2))
+        c2 = max(abs(curv1), abs(curv2))
+        c3 = abs(curv3)
+        ratio = 1.0 - c1/c2
+        if ratio > 0.50:
+            weak_tracks.append(track)
+        elif ratio < 0.2:
+            if counts[ix] > 20 or is_horrible_track2(track, labels, hits):
+                medium_tracks.append(track)
+            else:
+                strong_tracks.append(track)
+        else:
+            medium_tracks.append(track)
+
+    for track in strong_tracks:
+        strong_labels[labels==track] = track
+    for track in medium_tracks:
+        medium_labels[labels==track] = track
+    for track in weak_tracks:
+        weak_labels[labels==track] = track
+
+    return (strong_labels, medium_labels, weak_labels)
