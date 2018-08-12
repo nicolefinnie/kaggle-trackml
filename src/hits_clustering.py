@@ -854,8 +854,8 @@ def predict_event(event_id, hits, cells, train_or_test, truth):
     all_labels.append(labels_helix18)
     all_labels.append(labels_helix19)
     all_labels.append(labels_helix20)
-    # all_labels.append(labels_helix42)
-    # all_labels.append(labels_helix43)    
+    all_labels.append(labels_helix42)
+    all_labels.append(labels_helix43)    
     all_labels.append(labels_helix5)
     all_labels.append(labels_helix3)
     all_labels.append(labels_helix4)
@@ -876,10 +876,10 @@ def predict_event(event_id, hits, cells, train_or_test, truth):
     weak_merged = merge_all_labels(event_id, weak_labels, hits, truth)
     print('Done merging weak tracks.')
 
-    labels = merge.heuristic_merge_tracks(strong_merged, medium_merged, hits, overwrite_limit=3, print_summary=False)
+    labels = merge.heuristic_merge_tracks(strong_merged, medium_merged, hits, weak_tracks=True, overwrite_limit=3)
     display_score(event_id, hits, labels, truth, 'Merged strong with medium tracks for event ')
 
-    labels = merge.heuristic_merge_tracks(labels, weak_merged, hits, overwrite_limit=1, print_summary=False)
+    labels = merge.heuristic_merge_tracks(labels, weak_merged, hits, weak_tracks=True, overwrite_limit=1)
     display_score(event_id, hits, labels, truth, 'Merged strong, medium, and weak tracks for event ')
 
     # Straight track extension

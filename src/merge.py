@@ -76,7 +76,7 @@ def merge_tracks(labels1, labels2):
     labels_merged = renumber_labels(labels_merged)
     return labels_merged
 
-def heuristic_merge_tracks(labels1, labels2, hits, overwrite_limit=4, print_summary=False):
+def heuristic_merge_tracks(labels1, labels2, hits, overwrite_limit=4, weak_tracks=False, print_summary=False):
     """ Merge tracks from two arrays of track labels.
 
     Merges are handled as follows:
@@ -200,7 +200,11 @@ def heuristic_merge_tracks(labels1, labels2, hits, overwrite_limit=4, print_summ
                 # If the old track had too many hits not part of the new/proposed track, do
                 # not lengthen it - that may lose majority. Better to start a new track.
                 trk1a = np.where(labels_merged == longest_track_id)[0]
-                if longest_track_count + 6 < len(trk1a):
+                if weak_tracks:
+                    if longest_track_count + 3 < len(trk1a):
+                        count16 = count16 + 1
+                        longest_track_id = trk2
+                elif longest_track_count + 6 < len(trk1a):
                     count16 = count16 + 1
                     longest_track_id = trk2
 
@@ -234,7 +238,7 @@ def heuristic_merge_tracks(labels1, labels2, hits, overwrite_limit=4, print_summ
                             elif labels_merged[label_ix] == trk1_count[0]:# and label_ix not in outliers:
                                 labels_merged[label_ix] = longest_track_id
                                 count7 = count7 + 1
-                    else:
+                    elif not weak_tracks:
                         outliers = zro.find_track_outliers_zr(trk1_count[0], labels_merged, hits, find_all=True)
                         for label_ix in trk2_ix:
                             if labels_merged[label_ix] == trk1_count[0] and label_ix in outliers:
