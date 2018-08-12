@@ -526,6 +526,55 @@ def merge_all_labels(event_id, all_labels, hits, truth):
         display_score(event_id, hits, labels_merged, truth, message)
     return labels_merged
 
+def merge_all_strong_labels(event_id, all_labels, hits, truth):
+    merge_count = 0
+    labels_merged = np.copy(all_labels[0])
+    for i in range(len(all_labels)):
+        if i == 0: continue
+        labels_merged = merge.heuristic_merge_tracks(labels_merged, all_labels[i], hits, overwrite_limit=6, print_summary=False)
+        merge_count = merge_count + 1
+        # Periodically remove small tracks/noise to help merge performance.
+        # If we're only dealing with unmatched hits from a previous round, don't filter though,
+        # since we have relatively few tracks already, and removing even small tracks hurts.
+        if merge_count % 4 == 0:
+            (labels_merged, _) = merge.remove_small_tracks(labels_merged, smallest_track_size=3)
+        message = 'Merged loop 1-' + str(i+1) + ' score for event '
+        display_score(event_id, hits, labels_merged, truth, message)
+    return labels_merged
+
+def merge_all_medium_labels(event_id, all_labels, hits, truth):
+    merge_count = 0
+    labels_merged = np.copy(all_labels[0])
+    for i in range(len(all_labels)):
+        if i == 0: continue
+        labels_merged = merge.heuristic_merge_tracks(labels_merged, all_labels[i], hits, overwrite_limit=6, weak_tracks=True, print_summary=False)
+        merge_count = merge_count + 1
+        # Periodically remove small tracks/noise to help merge performance.
+        # If we're only dealing with unmatched hits from a previous round, don't filter though,
+        # since we have relatively few tracks already, and removing even small tracks hurts.
+        if merge_count % 4 == 0:
+            (labels_merged, _) = merge.remove_small_tracks(labels_merged, smallest_track_size=3)
+        message = 'Merged loop 1-' + str(i+1) + ' score for event '
+        display_score(event_id, hits, labels_merged, truth, message)
+    return labels_merged
+
+def merge_all_weak_labels(event_id, all_labels, hits, truth):
+    merge_count = 0
+    labels_merged = np.copy(all_labels[0])
+    for i in range(len(all_labels)):
+        if i == 0: continue
+        labels_merged = merge.heuristic_merge_tracks(labels_merged, all_labels[i], hits, overwrite_limit=3, weak_tracks=True, print_summary=False)
+        merge_count = merge_count + 1
+        # Periodically remove small tracks/noise to help merge performance.
+        # If we're only dealing with unmatched hits from a previous round, don't filter though,
+        # since we have relatively few tracks already, and removing even small tracks hurts.
+        if merge_count % 4 == 0:
+            (labels_merged, _) = merge.remove_small_tracks(labels_merged, smallest_track_size=3)
+        message = 'Merged loop 1-' + str(i+1) + ' score for event '
+        display_score(event_id, hits, labels_merged, truth, message)
+    return labels_merged
+
+
 def predict_event(event_id, hits, cells, train_or_test, truth):
     
     #DBSCAN_EPS_MATRIX = [0.0033, 0.0041, 0.0037, 0.0045]
@@ -843,7 +892,7 @@ def predict_event(event_id, hits, cells, train_or_test, truth):
     all_labels.append(labels_helix12)
     all_labels.append(labels_helix13)
     all_labels.append(labels_helix14)
-    all_labels.append(labels_helix15)
+    #all_labels.append(labels_helix15)
     all_labels.append(labels_helix16)
     #all_labels.append(labels_helix17)
     #all_labels.append(labels_helix18)
@@ -863,15 +912,18 @@ def predict_event(event_id, hits, cells, train_or_test, truth):
         weak_labels.append(weak)
 
     print('Merging strong tracks...')
-    strong_merged = merge_all_labels(event_id, strong_labels, hits, truth)
+    strong_merged = merge_all_strong_labels(event_id, strong_labels, hits, truth)
     print('Merging medium tracks...')
-    medium_merged = merge_all_labels(event_id, medium_labels, hits, truth)
+    medium_merged = merge_all_medium_labels(event_id, medium_labels, hits, truth)
     print('Merging weak tracks...')
-    weak_merged = merge_all_labels(event_id, weak_labels, hits, truth)
+    weak_merged = merge_all_weak_labels(event_id, weak_labels, hits, truth)
     print('Done merging weak tracks.')
 
     labels = merge.heuristic_merge_tracks(strong_merged, medium_merged, hits, weak_tracks=True, overwrite_limit=3)
     display_score(event_id, hits, labels, truth, 'Merged strong with medium tracks for event ')
+
+    weak_merged = merge.remove_outliers(weak_merged, hits, cells, aggressive=True, print_counts=False)
+    display_score(event_id, hits, labels, truth, 'Removed weak merged track outliers for event ')
 
     labels = merge.heuristic_merge_tracks(labels, weak_merged, hits, weak_tracks=True, overwrite_limit=1)
     display_score(event_id, hits, labels, truth, 'Merged strong, medium, and weak tracks for event ')

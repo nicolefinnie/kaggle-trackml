@@ -337,7 +337,8 @@ def one_round_straight_track_extension(track, labels, hits, aggressive_zr_estima
     #print(msg + 'zrs: ' + str(zrs))
     for ix, l in enumerate(all_layers):
         if xs[ix] == 0:
-            if (ix >= 2 and xs[ix-1] != 0 and xs[ix-2] != 0) or (ix < (len(xs) - 2) and xs[ix+1] != 0 and xs[ix+2] != 0):
+            #if (ix >= 2 and xs[ix-1] != 0 and xs[ix-2] != 0) or (ix < (len(xs) - 2) and xs[ix+1] != 0 and xs[ix+2] != 0):
+            if ((ix >= 2 and xs[ix-1] != 0 and xs[ix-2] != 0) or (ix < (len(xs) - 2) and xs[ix+1] != 0 and xs[ix+2] != 0)) or (ix >= 1 and ix < (len(xs) - 1) and xs[ix-1] != 0 and xs[ix+1] != 0):
                 (x_min, x_exp, x_max, y_min, y_exp, y_max, zr_min, zr_exp, zr_max) = get_expected_range(ix, xs, ys, zrs, aggressive_zr_estimation)
                 # DO IT!
                 #print('x: ' + str(x_min) + ', ' + str(x_max) + ', y: ' + str(y_min) + ', ' + str(y_max) + ', zr: ' + str(zr_min) + ', ' + str(zr_max))
