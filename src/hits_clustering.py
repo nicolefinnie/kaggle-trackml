@@ -923,7 +923,7 @@ def predict_event(event_id, hits, cells, train_or_test, truth):
     display_score(event_id, hits, labels, truth, 'Merged strong with medium tracks for event ')
 
     weak_merged = merge.remove_outliers(weak_merged, hits, cells, aggressive=True, print_counts=False)
-    display_score(event_id, hits, labels, truth, 'Removed weak merged track outliers for event ')
+    display_score(event_id, hits, weak_merged, truth, 'Removed weak merged track outliers for event ')
 
     labels = merge.heuristic_merge_tracks(labels, weak_merged, hits, weak_tracks=True, overwrite_limit=1)
     display_score(event_id, hits, labels, truth, 'Merged strong, medium, and weak tracks for event ')
