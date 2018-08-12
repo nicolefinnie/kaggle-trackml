@@ -14,11 +14,9 @@ from scipy import stats
 from tqdm import tqdm
 from sklearn.cluster import DBSCAN
 import argparse
-import seeds as sd
 import collections as coll
 import math
 import extension as xtnd
-import cone_slicing as cone
 import merge as merge
 import free_hits as free
 import straight_tracks as strt
