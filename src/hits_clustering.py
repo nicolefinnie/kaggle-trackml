@@ -911,6 +911,9 @@ def predict_event(event_id, hits, cells, train_or_test, truth):
         medium_labels.append(medium)
         weak_labels.append(weak)
 
+    print('Merging strong tracks...')
+    strong_merged = merge_all_strong_labels(event_id, strong_labels, hits, truth)
+
     print('Merging only strong tracks from other models...')
     all_labels2 = []
     all_labels2.append(labels_helix14)
@@ -922,15 +925,13 @@ def predict_event(event_id, hits, cells, train_or_test, truth):
     all_labels2.append(labels_helix4)
     for i in range(len(all_labels2)):
         (strong, medium, weak) = r0o.split_tracks_based_on_quality(all_labels2[i], hits)
-        strong_merged = merge.heuristic_merge_tracks(strong_merged, strong, hits, overwrite_limit=3, print_summary=False)
+        strong_merged = merge.heuristic_merge_tracks(strong_merged, strong, hits, weak_tracks=True, overwrite_limit=4, print_summary=False)
         message = 'Merged strong tracks for event '
         display_score(event_id, hits, strong_merged, truth, message)
         if i % 4 == 0:
             (strong_merged, _) = merge.remove_small_tracks(strong_merged, smallest_track_size=3)
     print('Done merging other strong tracks...')
 
-    print('Merging strong tracks...')
-    strong_merged = merge_all_strong_labels(event_id, strong_labels, hits, truth)
     print('Merging medium tracks...')
     medium_merged = merge_all_medium_labels(event_id, medium_labels, hits, truth)
     print('Merging weak tracks...')
