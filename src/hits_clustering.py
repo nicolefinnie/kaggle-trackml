@@ -861,22 +861,22 @@ def predict_event(event_id, hits, cells, train_or_test, truth):
     display_score(event_id, hits, labels_helix1, truth, 'After outlier removal helix1 ')
     labels_helix2 = merge.remove_outliers(labels_helix2, hits, cells, aggressive=True, print_counts=False)
     display_score(event_id, hits, labels_helix2, truth, 'After outlier removal helix2 ')
-    labels_helix3 = merge.remove_outliers(labels_helix3, hits, cells, aggressive=True, print_counts=False)
+    labels_helix3 = merge.remove_outliers(labels_helix3, hits, cells, aggressive=False, print_counts=False)
     display_score(event_id, hits, labels_helix3, truth, 'After outlier removal helix3 ')
-    labels_helix4 = merge.remove_outliers(labels_helix4, hits, cells, aggressive=True, print_counts=False)
+    labels_helix4 = merge.remove_outliers(labels_helix4, hits, cells, aggressive=False, print_counts=False)
     display_score(event_id, hits, labels_helix4, truth, 'After outlier removal helix4 ')
-    labels_helix5 = merge.remove_outliers(labels_helix5, hits, cells, aggressive=True, print_counts=False)
+    labels_helix5 = merge.remove_outliers(labels_helix5, hits, cells, aggressive=False, print_counts=False)
     display_score(event_id, hits, labels_helix5, truth, 'After outlier removal helix5 ')
     labels_helix1 = r0o.remove_badr0_tracks(labels_helix1, hits)
     display_score(event_id, hits, labels_helix1, truth, 'After r0 outlier removal helix1 ')
     labels_helix2 = r0o.remove_badr0_tracks(labels_helix2, hits)
     display_score(event_id, hits, labels_helix2, truth, 'After r0 outlier removal helix2 ')
-    labels_helix3 = r0o.remove_badr0_tracks(labels_helix3, hits)
-    display_score(event_id, hits, labels_helix3, truth, 'After r0 outlier removal helix3 ')
-    labels_helix4 = r0o.remove_badr0_tracks(labels_helix4, hits)
-    display_score(event_id, hits, labels_helix4, truth, 'After r0 outlier removal helix4 ')
-    labels_helix5 = r0o.remove_badr0_tracks(labels_helix5, hits)
-    display_score(event_id, hits, labels_helix5, truth, 'After r0 outlier removal helix5 ')
+    #labels_helix3 = r0o.remove_badr0_tracks(labels_helix3, hits)
+    #display_score(event_id, hits, labels_helix3, truth, 'After r0 outlier removal helix3 ')
+    #labels_helix4 = r0o.remove_badr0_tracks(labels_helix4, hits)
+    #display_score(event_id, hits, labels_helix4, truth, 'After r0 outlier removal helix4 ')
+    #labels_helix5 = r0o.remove_badr0_tracks(labels_helix5, hits)
+    #display_score(event_id, hits, labels_helix5, truth, 'After r0 outlier removal helix5 ')
 
     all_labels = []
     all_labels.append(labels_helix1)
@@ -911,6 +911,24 @@ def predict_event(event_id, hits, cells, train_or_test, truth):
         medium_labels.append(medium)
         weak_labels.append(weak)
 
+    print('Merging only strong tracks from other models...')
+    all_labels2 = []
+    all_labels2.append(labels_helix14)
+    all_labels2.append(labels_helix15)
+    all_labels2.append(labels_helix17)
+    all_labels2.append(labels_helix18)
+    all_labels2.append(labels_helix19)
+    all_labels2.append(labels_helix3)
+    all_labels2.append(labels_helix4)
+    for i in range(len(all_labels2)):
+        (strong, medium, weak) = r0o.split_tracks_based_on_quality(all_labels2[i], hits)
+        strong_merged = merge.heuristic_merge_tracks(strong_merged, strong, hits, overwrite_limit=3, print_summary=False)
+        message = 'Merged strong tracks for event '
+        display_score(event_id, hits, strong_merged, truth, message)
+        if i % 4 == 0:
+            (strong_merged, _) = merge.remove_small_tracks(strong_merged, smallest_track_size=3)
+    print('Done merging other strong tracks...')
+
     print('Merging strong tracks...')
     strong_merged = merge_all_strong_labels(event_id, strong_labels, hits, truth)
     print('Merging medium tracks...')
@@ -927,9 +945,6 @@ def predict_event(event_id, hits, cells, train_or_test, truth):
 
     labels = merge.heuristic_merge_tracks(labels, weak_merged, hits, weak_tracks=True, overwrite_limit=1)
     display_score(event_id, hits, labels, truth, 'Merged strong, medium, and weak tracks for event ')
-
-    labels = merge.heuristic_merge_tracks(labels, strong_merged, hits, weak_tracks=True, overwrite_limit=4)
-    display_score(event_id, hits, labels, truth, 'Merged strong tracks again for event ')
 
     # Straight track extension
     labels = strt.extend_straight_tracks(labels, hits)
