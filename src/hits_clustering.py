@@ -25,25 +25,25 @@ import r0outlier as r0o
 INPUT_PATH = '../../input'
 
 SCALED_DISTANCE = [1,       1,       0.50, 0.125, 0.008, 0.008, 0.00175, 0.00175]
-FEATURE_MATRIX = ['sina1', 'cosa1', 'z1', 'z2',  'xd', 'yd', 'px', 'py']
+FEATURE_MATRIX = ['sin', 'cos', 'z1', 'z2',  'xd', 'yd', 'px', 'py']
 
 SCALED_DISTANCE_2 = [1,       1,       0.5, 0.008, 0.008, 0.00185, 0.00185]
-FEATURE_MATRIX_2 = ['sina1', 'cosa1', 'z3', 'xd', 'yd', 'px', 'py']
+FEATURE_MATRIX_2 = ['sin', 'cos', 'z3', 'xd', 'yd', 'px', 'py']
 
 SCALED_DISTANCE_3 = [1,       1, 0.5, 0.25]
-FEATURE_MATRIX_3 = ['sina1','cosa1', 'zr', 'z1']
+FEATURE_MATRIX_3 = ['sin','cos', 'zr', 'z1']
 
 SCALED_DISTANCE_4 = [1,       1, 0.5, 0.25]
-FEATURE_MATRIX_4 = ['sina1','cosa1', 'zr', 'z3']
+FEATURE_MATRIX_4 = ['sin','cos', 'zr', 'z3']
 
 SCALED_DISTANCE_5 = [1, 1, 0.5, 0.25, 0.008, 0.008, 0.00175, 0.00175]
-FEATURE_MATRIX_5 = ['sina1', 'cosa1', 'r0', 'z3', 'xd', 'yd', 'px', 'py']
+FEATURE_MATRIX_5 = ['sin', 'cos', 'r0', 'z3', 'xd', 'yd', 'px', 'py']
 
 SCALED_DISTANCE_6 = [1,       1,       0.5, 0.00175, 0.00175] 
-FEATURE_MATRIX_6 = ['sina1', 'cosa1', 'zarc', 'px', 'py']
+FEATURE_MATRIX_6 = ['sin', 'cos', 'zarc', 'px', 'py']
 
 SCALED_DISTANCE_7 = [1,       1,       0.5,  0.00175, 0.00175] 
-FEATURE_MATRIX_7 = ['sina1', 'cosa1', 'zarc2', 'px', 'py']
+FEATURE_MATRIX_7 = ['sin', 'cos', 'zarc2', 'px', 'py']
 
 STEPRR = 0.03
 
@@ -58,8 +58,6 @@ DBSCAN_EPS = 0.0033
 SAMPLE = 400
 R0_STEP_EPS = 0.00055
 MIN_R0 = 270
-MAX_R0 = 37500
-R0_SAMPLE_EVENT = [1010, 1015, 1020, 1025, 1030, 1035, 1040, 1045, 1050, 1060, 1070, 1080, 1090]
 
 # using radius of every hit to approximate the angle between y-axis and 
 # the closest approach to the centre of helix
@@ -78,7 +76,6 @@ print('stepeps: ' + str(STEPEPS))
 print('r0 samples: ' + str(SAMPLE))
 print('r0 step eps: ' + str(R0_STEP_EPS))
 print('min r0: ' + str(MIN_R0))
-print('r0 sample events: ' + str(R0_SAMPLE_EVENT))
 print('extension standard limits: ' + str(EXTENSION_STANDARD_LIMITS))
 print('extension light limits: ' + str(EXTENSION_LIGHT_LIMITS))
 
@@ -95,55 +92,12 @@ class Clusterer(object):
         path_to_r0 = os.path.join(INPUT_PATH, 'r0_list')
         return pd.read_csv(os.path.join(path_to_r0, 'r0_list_%s.csv'%event_id)).r0.values
 
-    def _get_samples(self, num_samples, invert=True, duplicate=True, add_0=0, region1_percent=95, region1_type=3, region1_min=MIN_R0, region1_max=4500, region2_type=3, region2_min=4501, region2_max=MAX_R0):
-        """
-        num_samples - the number of sample points to generate
-        invert - whether the values should be inverted before being returned
-        duplicate - whether the result should be tiled (duplicated)
-        add_0 - 0 does not add any 0 value, 1 adds the zero at the beginning of the sample, 2 adds the zero at the end
-        region1_percent - amount of samples distributed to the first region
-        region1_type - 1 for linear, 2 for narrow half-Gaussian, 3 for wide half-Gaussian
-        region1_min - minimum value for samples of first region
-        region1_max - approximate maximum value for samples of first region
-        region2_type, region2_min, region2_max - see region1_type, region1_min, region1_max
-        """
-        def get_samples_single_region(num_samples, region_type, region_min, region_max):
-            if region_type == 1:
-                results = np.linspace(region_min, region_max, num=num_samples, endpoint=True, dtype=np.float32)
-            else:
-                mu = 0 # centre at 0 for now, adjust later
-                if region_type == 2:
-                    sigma = 0.25
-                else:
-                    sigma = 0.37
-                results = np.abs(np.random.normal(mu, sigma, num_samples))
-                results = (results * (region_max - region_min)) + region_min
-                results[results > region_max] = results[results > region_max] - (region_max - region_min)
-            return results
-
-        np.random.seed(42)
-        results = np.zeros(num_samples)
-        num_region1 = math.floor(num_samples*(region1_percent/100))
-        results[0:num_region1] = get_samples_single_region(num_region1, region1_type, region1_min, region1_max)
-        results[num_region1:] = get_samples_single_region(num_samples-num_region1, region2_type, region2_min, region2_max)
-        results.sort()
-        if invert:
-            results = 1 / results
-        if add_0 == 1:
-            results[0] = 0
-        elif add_0 == 2:
-            results[-1] = 0
-        if duplicate:
-            results = np.tile(results, 2)
-        return results
-
     def _dbscan(self, dfh, label_file_root):
         labels = []
 
         dfh['d'] = np.sqrt(dfh.x**2+dfh.y**2+dfh.z**2)
         dfh['r'] = np.sqrt(dfh.x**2+dfh.y**2)       
-        #dfh['zr'] = np.arctan2(dfh.z, dfh.r)
-
+        
         rr = dfh['r']/1000      
 
         for loop in range(len(self.model_parameters[3])):
@@ -154,19 +108,19 @@ class Clusterer(object):
                 labels.append(pd.read_csv(label_file).label.values)
             else:
                 if loop%4 == 0:
-                    dfh['a0'] = np.arctan2(dfh.y,dfh.x)
+                    dfh['phi'] = np.arctan2(dfh.y,dfh.x)
                     dfh['xd'] = dfh.x/dfh['d']
                     dfh['yd'] = dfh.y/dfh['d']
                 elif loop%4 == 1:
-                    dfh['a0'] = np.arctan2(dfh.x,-dfh.y)
+                    dfh['phi'] = np.arctan2(dfh.x,-dfh.y)
                     dfh['xd'] = -dfh.y/dfh['d']
                     dfh['yd'] = dfh.x/dfh['d']
                 elif loop%4 == 2:
-                    dfh['a0'] = np.arctan2(-dfh.y,-dfh.x)
+                    dfh['phi'] = np.arctan2(-dfh.y,-dfh.x)
                     dfh['xd'] = -dfh.x/dfh['d']
                     dfh['yd'] = -dfh.y/dfh['d']
                 else:
-                    dfh['a0'] = np.arctan2(-dfh.x,dfh.y)
+                    dfh['phi'] = np.arctan2(-dfh.x,dfh.y)
                     dfh['xd'] = dfh.y/dfh['d']
                     dfh['yd'] = -dfh.x/dfh['d']
 
@@ -175,10 +129,10 @@ class Clusterer(object):
                 dfh['z1'] = dfh.zshift/dfh['r'] 
                 dfh['z2'] = dfh.zshift/dfh['d']
                 dfh['z3'] = np.log1p(np.absolute(dfh.zshift/ dfh.r))*np.sign(dfh.zshift)
-                          
+                dfh['zr'] = np.arctan2(dfh.zshift, dfh.r)
+
                 # r0 loop 
                 if self.model_parameters[0] is HELIX_UNROLL_R0_MODE:
-                    #r0_list = self._get_samples(SAMPLE, invert=False)  
                     r0_list = self._read_samples(self.model_parameters[4][loop])
                     r0_list = r0_list[ r0_list > MIN_R0 ]
                     skip = int(r0_list.shape[0]/SAMPLE)
@@ -200,30 +154,23 @@ class Clusterer(object):
                         #non_zero_ix = np.where(dfh['cos_theta'] != 0)
 
                         if ii < r0_list.shape[0]/2:
-                            dfh['a1'] = dfh['a0'] - np.arccos(dfh['cos_theta'])
+                            dfh['theta0'] = dfh['phi'] - np.arccos(dfh['cos_theta'])
                         else:
-                            dfh['a1'] = dfh['a0'] + np.arccos(dfh['cos_theta'])
+                            dfh['theta0'] = dfh['phi'] + np.arccos(dfh['cos_theta'])
 
                         # helix parameter space circling around the z-axis
-                        dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
-                        dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
+                        dfh['px'] = -dfh.r*np.cos(dfh.theta0)*np.cos(dfh.phi) - dfh.r*np.sin(dfh.theta0)*np.sin(dfh.phi)
+                        dfh['py'] = -dfh.r*np.cos(dfh.theta0)*np.sin(dfh.phi) + dfh.r*np.sin(dfh.theta0)*np.cos(dfh.phi)
                         
 
-                        dfh['sina1'] = np.sin(dfh['a1'])
-                        dfh['cosa1'] = np.cos(dfh['a1'])
+                        dfh['sin'] = np.sin(dfh['theta0'])
+                        dfh['cos'] = np.cos(dfh['theta0'])
 
-                        # z / angle                  
-                        #dfh['zarc'] = 0
-                        #zarc = dfh.zarc.values
-                        #zarc[zero_ix] = dfh.zshift.iloc[zero_ix]/dfh.r.iloc[zero_ix]
-                        #TODO if the arc angle is greater than pi
-                        #zarc[non_zero_ix] = dfh.zshift.iloc[non_zero_ix]/ (np.arcsin(dfh.cos_theta.iloc[non_zero_ix]) * 2 )
-                        #dfh['zarc'] = dfh.zshift/ np.arcsin (dfh.cos_theta*2)
-                        #dfh['zarc'] = np.log1p(np.absolute(dfh.zshift/ (np.arcsin(dfh.cos_theta.iloc[non_zero_ix]) * 2 * r0 )))*np.sign(dfh.zshift)
-                        #dfh['zarc'] = zarc
+                        # z / arc length
+                        #TODO it doesn't take into account the case where the arc angle is greater than pi
                         dfh['zarc'] = np.log1p(np.absolute(dfh.zshift/ (np.arcsin(dfh.cos_theta) * 2 * r0 )))*np.sign(dfh.zshift)
                         
-                        # 1/np.sqrt(sin(theta0)) correction term for the azimuthal angle on the x-y plane projection
+                        # 1/np.sqrt(sin(lambda)) correction term for the azimuthal angle on the x-y plane projection, lambda is the angle of r/z
                         dfh['zarc2'] = dfh.zshift/ (np.arcsin(dfh.cos_theta) * 2 * r0 ) * np.sqrt(np.sin(np.arctan2(dfh.r, dfh.zshift)))
                          
 
@@ -255,15 +202,15 @@ class Clusterer(object):
                     for ii in tqdm(np.arange(-STEPS, STEPS, 1)):
                         print ('\r steps: %d '%ii, end='',flush=True)
                        
-                        dfh['a1'] = dfh['a0'] + (rr + STEPRR*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
-                        dfh['t1'] = dfh['a0'] - np.pi*(ii/STEPS) 
+                        dfh['theta0'] = dfh['phi'] + (rr + STEPRR*rr**2)*ii/180*np.pi + (0.00001*ii)*dfh.z*np.sign(dfh.z)/180*np.pi
+                        dfh['t1'] = dfh['phi'] - np.pi*(ii/STEPS) 
                         dfh['r0'] = dfh.r/np.cos(dfh.t1) 
                         # parameter space
-                        dfh['px'] = -dfh.r*np.cos(dfh.a1)*np.cos(dfh.a0) - dfh.r*np.sin(dfh.a1)*np.sin(dfh.a0)
-                        dfh['py'] = -dfh.r*np.cos(dfh.a1)*np.sin(dfh.a0) + dfh.r*np.sin(dfh.a1)*np.cos(dfh.a0)
+                        dfh['px'] = -dfh.r*np.cos(dfh.theta0)*np.cos(dfh.phi) - dfh.r*np.sin(dfh.theta0)*np.sin(dfh.phi)
+                        dfh['py'] = -dfh.r*np.cos(dfh.theta0)*np.sin(dfh.phi) + dfh.r*np.sin(dfh.theta0)*np.cos(dfh.phi)
                         
-                        dfh['sina1'] = np.sin(dfh['a1'])
-                        dfh['cosa1'] = np.cos(dfh['a1'])
+                        dfh['sin'] = np.sin(dfh['theta0'])
+                        dfh['cos'] = np.cos(dfh['theta0'])
                         
                         ss = StandardScaler()
                     
