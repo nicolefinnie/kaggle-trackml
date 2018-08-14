@@ -1,4 +1,5 @@
 
+[Our share at Kaggle](https://www.kaggle.com/c/trackml-particle-identification/discussion/63244)
 
 ## Generate the hidden feature - helix radii as input 
 
