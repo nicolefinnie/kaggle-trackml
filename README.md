@@ -11,7 +11,7 @@
 ### z-axis centered tracks, tracks crossing (x,y) = (0,0)
 * The closet approach `D0 = 0`, the tracks start from close to `(0,0,z)`.
 
-![helix unrolling](https://github.com/nicolefinnie/kaggle-trackml/images/helix_unrolling.png)
+![helix unrolling](https://github.com/nicolefinnie/kaggle-trackml/blob/master/images/helix_unrolling.png)
 * Accurate version - reach `score=0.5` within 1 minute with 40 radius samples. To get a higher accuracy, you need to run more radius samples and it can take much longer.
 
 ```
