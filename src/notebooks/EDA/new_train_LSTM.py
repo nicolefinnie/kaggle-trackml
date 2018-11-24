@@ -24,23 +24,22 @@ from keras import layers
 from keras import backend as K
 from keras.layers import Masking
 from keras import optimizers
-from keras.callbacks import EarlyStopping
 
 
 # In[2]:
 
 
-TRAIN_DATA = '../../../../kaggle-trackml/input/train'
+TRAIN_DATA = '../../../../kaggle-trackml/input/train_1'
 TRAIN_NUMPY = '../../../../kaggle-trackml/input/train_numpy'
 TRAIN_SAMPLE_DATA = '../../../../kaggle-trackml/input/train_100_events'
 DBSCAN_DATA = '../../../../kaggle-trackml/src/r0_fast'
-GPU = 4 # 0 is default (usually uses 1 GPU if available, if > 1 then configures multi-gpu model)
+GPU = 0 # 0 is default (usually uses 1 GPU if available, if > 1 then configures multi-gpu model)
 # Pass in saved model file name to retrain if desired, i.e "2018-11-16-01-13-33.h5".
 # If set to None, a new model will be built (if TRAIN_MODEL is True).
 LOAD_MODEL_NAME = None #"1024-epoch-200.h5"
-TRAIN_MODEL = True # Model is automatically saved after training
+TRAIN_MODEL = False # Model is automatically saved after training
 VISUALIZE_RESULTS = False
-predict_model_names = [] #['2048-epoch-400-mae.h5', '1024-epoch-400-mae.h5']
+predict_model_names = ['1024-512-epoch-256-mae.h5', '2048-epoch-400-mae.h5', '1024-epoch-220-mae.h5']
 
 
 # In[3]:
@@ -166,10 +165,7 @@ def build_new_model(input_shape, output_shape,
                 loss='mae', #loss='mse', rmse, 'mape'
                 optimizer='Nadam', metrics=['accuracy', 'mse', 'mape']):
     inputs = layers.Input(shape=input_shape)
-    hidden_tmp = layers.Bidirectional(layers.LSTM(units=1024, return_sequences=True))(inputs)
-    hidden = layers.Bidirectional(layers.LSTM(units=512, return_sequences=True))(hidden_tmp)
-    #hidden_tmp = layers.Bidirectional(layers.LSTM(units=256, return_sequences=True))(inputs)
-    #hidden = layers.Bidirectional(layers.LSTM(units=128, return_sequences=True))(hidden_tmp)
+    hidden = layers.LSTM(units=1024, return_sequences=True)(inputs)
     #dropout = layers.Dropout(0.2)(hidden)
     #hidden2 = layers.LSTM(units=24, return_sequences=True)(dropout)
     outputs = layers.TimeDistributed(layers.Dense(output_shape[1], activation='linear'))(hidden)
@@ -627,6 +623,9 @@ def ensemble_predictions(model_names, dbscan=False, first_event=9998, num_events
     track_dists = np.zeros((6), dtype=int)
     avg_seed_accuracy = 0.0
     seed_dists = np.zeros((6), dtype=int)
+    inference_times = np.zeros((num_models), dtype=float)
+    total_fit_time = 0.0
+    total_tracks = 0
     
     for ev in range(num_events):
         start = time.time()
@@ -637,6 +636,7 @@ def ensemble_predictions(model_names, dbscan=False, first_event=9998, num_events
         else:
             fit_df, pred_x, pred_truth = generate_train_batch_for_fitting(fit_df)
         num_tracks = pred_truth.shape[0]
+        total_tracks = total_tracks + num_tracks
         elapsed = find_elapsed_time(start, "Event {} with {} tracks setup time: ".format(event_id, num_tracks))
 
         preds = np.copy(pred_x)
@@ -645,14 +645,16 @@ def ensemble_predictions(model_names, dbscan=False, first_event=9998, num_events
         for i in range(num_models):
             start = time.time()
             pred_raw = gpu_models[i].predict(pred_x[:,:,0:4])
-            elapsed = elapsed + find_elapsed_time(start, "predict time: ", display_time=verbose)
+            this_elapsed = find_elapsed_time(start, "predict time: ", display_time=verbose)
             preds[:,5:,0:4] = preds[:,5:,0:4] + pred_raw[:,5:,0:4]
+            elapsed = elapsed + this_elapsed
+            inference_times[i] = inference_times[i] + this_elapsed
 
             if verbose:
                 test_loss, test_acc, test_mae, test_mape = gpu_models[i].evaluate(pred_x[:,:,0:4], pred_truth[:,:,0:4])
                 print("Loss: MSE: {:f}, MAE: {:f}, MAPE: {:f}".format(test_loss, test_mae, test_mape))
 
-        print("Event {} predict time: {:f} (per track: {:f})".format(event_id, elapsed, elapsed/num_tracks))
+        print("Event {} inference time: {:f} (per track: {:f})".format(event_id, elapsed, elapsed/num_tracks))
 
         preds[:,5:,0:4] = preds[:,5:,0:4] / num_models
 
@@ -660,6 +662,7 @@ def ensemble_predictions(model_names, dbscan=False, first_event=9998, num_events
         start = time.time()
         (fit_df, preds) = fit_predictions(fit_df, preds)
         elapsed = find_elapsed_time(start, "x", display_time=False)
+        total_fit_time = total_fit_time + elapsed
         print("Event {} fit time: {:f} (per track: {:f})".format(event_id, elapsed, elapsed/num_tracks))
 
         (accuracy, dist, seed_accuracy, seed_dist) = calculate_fit_accuracy(preds, verbose=verbose)
@@ -676,9 +679,21 @@ def ensemble_predictions(model_names, dbscan=False, first_event=9998, num_events
     if num_events > 1:
         avg_accuracy = avg_accuracy / num_events
         avg_seed_accuracy = avg_seed_accuracy / num_events
+        total_inference_time = np.sum(inference_times)
+        inference_time_event_avg = inference_times / num_events
+        inference_time_event_avg_sum = np.sum(inference_time_event_avg)
+        inference_time_track_avg = inference_times / total_tracks
+        inference_time_track_avg_sum = np.sum(inference_time_track_avg)
+        fit_time_avg = total_fit_time / num_events
+        tracks_avg = total_tracks / num_events
+        print("Total tracks predicted: {:d}, average per-event: {:d}".format(total_tracks, int(tracks_avg)))
+        print("Total inference time: {:f}, per-model: {}".format(total_inference_time, inference_times))
         print("Average accuracy: {:f}, total distribution (0-5 correct): {}".format(avg_accuracy, track_dists))
         print("Average seed accuracy: {:f}, total seed distribution (0-5 correct): {}".format(avg_seed_accuracy, seed_dists))
-
+        print("Average event model inference times: {:f}, {}".format(inference_time_event_avg_sum, inference_time_event_avg))
+        print("Average track model inference times: {:f}, {}".format(inference_time_track_avg_sum, inference_time_track_avg))
+        print("Total fit time: {:f}, average fit time: {:f}".format(total_fit_time, fit_time_avg))
+        
     return
 
 
@@ -700,9 +715,9 @@ if TRAIN_MODEL:
     # For playing around just load a couple hundred events, for final LSTM
     # training, all possible events should be used to minimize loss.
     train_skip = 0
-    train_nevents = 8300
+    train_nevents = 200
     val_skip = 0
-    val_nevents = 500
+    val_nevents = 20
     print('loading train data...')
     invals, truth = load_or_generate_multiple_event_data(skip=train_skip, nevents=train_nevents)
     print('Done!')
@@ -718,9 +733,8 @@ if TRAIN_MODEL:
 
     model.summary()
 
-    batch_size = 8192
-    num_epoch = 300
-    earlystopper = EarlyStopping(patience=20, verbose=0)
+    batch_size = 4096
+    num_epoch = 100
     #generator = batch_generator(invals, truth, batch_size)
     #val_generator = batch_generator(val_input, val_truth, batch_size)
     # Train the model
@@ -728,7 +742,7 @@ if TRAIN_MODEL:
     #                              steps_per_epoch=int(invals.shape[0]/batch_size), epochs=num_epoch, 
     #                              shuffle = False)
     history = gpu_model.fit(x=invals, y=truth, validation_data=(val_input, val_truth), batch_size=batch_size,
-                            epochs=num_epoch, callbacks=[earlystopper], shuffle=False)
+                            epochs=num_epoch, shuffle=False)
 
     current_datetime_str = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     save_model_name = current_datetime_str + '.h5'
@@ -756,5 +770,17 @@ if TRAIN_MODEL:
 # dbscan 100: Average accuracy: 0.803291, total distribution (0-5 correct): [ 1574  1580  3264  5182  8920 23300]
 # dbscan 100: Average seed accuracy: 0.957257, total seed distribution (0-5 correct): [    0    26   777  1619  3787 37611]
 # truth 100:  Average accuracy: 0.845796, total distribution (0-5 correct): [  190  1290  3792  8004 15838 34696]
-ensemble_predictions(predict_model_names, dbscan=False, first_event=9998, num_events=1)
+#predict_model_names = ['3072-epoch-400-mae.h5', '2048-epoch-400-mae.h5', '1024-epoch-400-mae.h5']
+# 3072: 82.8%, 3072+2048: 85.4%, 3072+2048+1024: 86.1%
+#predict_model_names = ['Bi1024-Bi512-epoch-120-mae.h5', '2048-epoch-400-mae.h5', '1024-epoch-400-mae.h5']
+# Bi: 83.1%, Bi+2048: 85.9%, Bi+2048+1024: 86.2%
+# truth: 646 tracks, 86.2% ([  2  10  32  66 167 369])
+# dbscan: 452 tracks, 83.2%, ([  9  11  32  56  83 261]), seeds 95.6% ([  0   1   4  20  43 384])
+#predict_model_names = ['1024-512-epoch-256-mae.h5', '2048-epoch-400-mae.h5', '1024-epoch-400-mae.h5']
+# truth: 646 tracks, 86.6% ([  2  10  36  61 153 384])
+# dbscan: 452 tracks, 83.4%, ([ 10   8  30  57  89 258]), seeds 95.6% ([  0   1   4  20  43 384])
+#predict_model_names = ['1024-512-epoch-256-mae.h5', '2048-epoch-400-mae.h5', '1024-epoch-220-mae.h5']
+# truth: 646 tracks, 86.9% ([  2   9  30  55 178 372])
+# dbscan: 452 tracks, 83.6% ([ 11   6  30  52  98 255]), seeds 95.6% ([  0   1   4  20  43 384])
+ensemble_predictions(predict_model_names, dbscan=True, first_event=9900, num_events=100)
 
