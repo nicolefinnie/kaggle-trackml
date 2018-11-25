@@ -36,8 +36,8 @@ DBSCAN_DATA = '../../../../kaggle-trackml/src/r0_fast'
 GPU = 0 # 0 is default (usually uses 1 GPU if available, if > 1 then configures multi-gpu model)
 # Pass in saved model file name to retrain if desired, i.e "2018-11-16-01-13-33.h5".
 # If set to None, a new model will be built (if TRAIN_MODEL is True).
-LOAD_MODEL_NAME = None #"1024-epoch-200.h5"
-TRAIN_MODEL = False # Model is automatically saved after training
+LOAD_MODEL_NAME = None
+TRAIN_MODEL = False # If TRAIN_MODEL is True, model is automatically saved after training
 VISUALIZE_RESULTS = False
 predict_model_names = ['1024-512-epoch-256-mae.h5', '2048-epoch-400-mae.h5', '1024-epoch-220-mae.h5']
 
@@ -76,36 +76,10 @@ def draw_train_history(history, metric='acc', metric_ylabel='Accuracy', metric_t
     plt.legend(loc=0)
     plt.tight_layout()
     return fig
-
-
-def draw_prediction_2d(truth, predict, start=0, end=1):
-    fig1 = plt.figure(figsize=(12,12))
-    ax1  = fig1.add_subplot(2,1,1)
-    ax1.set_xlabel('x', fontsize=16)
-    ax1.set_ylabel('y', fontsize=16)
-    
-    fig2 = plt.figure(figsize=(12,12))
-    ax2 = fig2.add_subplot(2,1,1)
-    ax2.set_xlabel('a', fontsize=16)
-    ax2.set_ylabel('r', fontsize=16)
-    
-    for n in range(start,end,1):
-        a, r, z = truth[n].T
-        x = r*np.cos(a)
-        y = r*np.sin(a)
-        ea, er, ez = predict[n].T
-        ex = er*np.cos(ea)
-        ey = er*np.sin(ea)
-        
-        color = np.random.uniform(0,1,3)
-        ax1.plot(ex,ey,'.-',color = [0.75,0.75,0.75], markersize=10)
-        ax1.plot(x,y,'.-',color = color, markersize=5)
-        
-        ax2.plot(ea,er,'.-',color = [0.75,0.75,0.75], markersize=10)
-        ax2.plot(a,r,'.-',color = color, markersize=5)
-
     
 def draw_prediction(truth, predict, start=0, end=1):
+    """Visualize ground truth and predicted tracks.
+    Ground truth tracks will be in colour, and predicted tracks in grey."""
     fig1 = plt.figure(figsize=(12,12))
     ax1  = fig1.add_subplot(111, projection='3d')
     fig1.patch.set_facecolor('white')
@@ -116,7 +90,7 @@ def draw_prediction(truth, predict, start=0, end=1):
     fig2 = plt.figure(figsize=(12,12))
     ax2  = fig2.add_subplot(111, projection='3d')
     fig2.patch.set_facecolor('white')
-    ax2.set_xlabel('a', fontsize=16)
+    ax2.set_xlabel('Φ', fontsize=16)
     ax2.set_ylabel('r', fontsize=16)
     ax2.set_zlabel('z', fontsize=16)
 
@@ -137,7 +111,7 @@ def draw_prediction(truth, predict, start=0, end=1):
         
         ax2.plot(ea,er,ez,'.-',color = [0.75,0.75,0.75], markersize=10)
         ax2.plot(a,r,z,'.-',color = color, markersize=5)
-        if n==50: plt.show(1)
+        #if n==50: plt.show(1)
 
 
 # In[5]:
@@ -145,9 +119,11 @@ def draw_prediction(truth, predict, start=0, end=1):
 
 
 def rmse (y_true, y_pred):
+    """Implementation of root-mean-squared error, as an alternative loss function."""
     return K.sqrt(K.mean(K.square(y_pred -y_true), axis=-1))
 
 def compile_model(model, loss, optimizer, metrics):
+    """Compile model. If multiple GPUs are desired (GPU > 0), a multi-GPU parallel model will be compiled."""
     if GPU > 0:
         gpu_model = multi_gpu_model(model, GPU)
     else:
@@ -158,16 +134,21 @@ def compile_model(model, loss, optimizer, metrics):
     return model, gpu_model
 
 def load_existing_model(filename, loss='mae', optimizer='Nadam', metrics=['accuracy', 'mse', 'mape']):
+    """Load an existing model from disk and compile it. Can be used for inference, or further training."""
     model = load_model(filename)
     return compile_model(model, loss, optimizer, metrics)
 
-def build_new_model(input_shape, output_shape,
-                loss='mae', #loss='mse', rmse, 'mape'
-                optimizer='Nadam', metrics=['accuracy', 'mse', 'mape']):
+def build_new_model(input_shape, output_shape, loss='mae', optimizer='Nadam', metrics=['accuracy', 'mse', 'mape']):
+    """Build a new model to be trained."""
+    # Alternative loss functions: 'mse', rmse, 'mape'
     inputs = layers.Input(shape=input_shape)
+    # Bidi LSTM 1024 neurons --> Bidi LSTM 512 neurons
+    #hidden_tmp = layers.Bidirectional(layers.LSTM(units=1024, return_sequences=True))(inputs)
+    #hidden = layers.Bidirectional(layers.LSTM(units=512, return_sequences=True))(hidden_tmp)
+    # LSTM 2048 neurons
+    # hidden = layers.LSTM(units=2048, return_sequences=True)(inputs)
+    # LSTM 1024 neurons
     hidden = layers.LSTM(units=1024, return_sequences=True)(inputs)
-    #dropout = layers.Dropout(0.2)(hidden)
-    #hidden2 = layers.LSTM(units=24, return_sequences=True)(dropout)
     outputs = layers.TimeDistributed(layers.Dense(output_shape[1], activation='linear'))(hidden)
     model = models.Model(inputs=inputs, outputs=outputs)
 
@@ -177,12 +158,16 @@ def build_new_model(input_shape, output_shape,
 # In[6]:
 
 
-def generate_dbscan_tracks(labels, hits):
-    df = generate_df(hits, False)
+def find_dbscan_seeds(labels, hits):
+    """From dbscan input (labels), find seeds to input to LSTM."""
+    df = add_features_to_df(hits, False)
+    # Add columns to help with eventual fitting
     df['track_id'] = pd.Series([0] * len(df.index), index=df.index)
     df['predict_done'] = pd.Series([0] * len(df.index), index=df.index)
     df['actual_particle_id'] = pd.Series([0] * len(df.index), index=df.index)
 
+    # Extract features that will be used by LSTM - a (phi), r, z, and z/r.
+    # Normalize so they are in the range of 0..1
     a,r,z,z1 = df[['a', 'r', 'z', 'z1']].values.astype(np.float32).T
     hit, p = df[['hit_id', 'particle_id']].values.astype(np.int64).T
     incols1 = np.column_stack((a,r/1000, z/3000,z1/3))
@@ -200,6 +185,7 @@ def generate_dbscan_tracks(labels, hits):
         track_hits = np.intersect1d(track_hits, positive_ix, assume_unique=True)
         if len(track_hits) < 5: continue
 
+        # Sort on z - a cheap way of ordering a track based very loosely on 'time'
         t = track_hits[np.argsort(z[track_hits])]
         ti = incols1[t]
         hit_p = incols2[t]
@@ -212,11 +198,11 @@ def generate_dbscan_tracks(labels, hits):
             seed_particle_id = count_particle_ids[1][0]
             seed_particle_matches = count_particle_ids[1][1]
 
-        # Un-comment to discard horrible seeds where <3 hits match
-        #if seed_particle_matches < 3: continue
-
         truth_hits = np.where(df.particle_id == seed_particle_id)[0]
         truth_hits = np.intersect1d(truth_hits, positive_ix, assume_unique=True)
+        # Our LSTM was trained on tracks of length >= 10, discard short tracks.
+        # If using all seeds regardless of truth track length, fitting would need
+        # to be changed to discard hits too far from any hit.
         if len(truth_hits) < 10: continue
         #    print("Truth track {} not long enough, actual length: {}".format(seed_particle_id, len(truth_hits)))
         tr = truth_hits[np.argsort(z[truth_hits])]
@@ -241,23 +227,19 @@ def generate_dbscan_tracks(labels, hits):
     return df, seeds, truth
 
 def generate_dbscan_test_data(event_id, hits):
+    """Generate seeds/test data from dbscan input."""
     helix1 = pd.read_csv(os.path.join(DBSCAN_DATA, "event_{}_labels_train_helix42.csv".format(event_id))).label.values
-    return generate_dbscan_tracks(helix1, hits)
+    return find_dbscan_seeds(helix1, hits)
 
 
 # In[7]:
 
 
-def load_one_test_event_data(event_id, path):
-    hits  = pd.read_csv(os.path.join(path, 'event%s-hits.csv' %event_id))
-    cells = pd.read_csv(os.path.join(path, 'event%s-cells.csv'%event_id))
-    return hits
-
-def generate_df(df, filter=True):
+def add_features_to_df(df, filter_negative=True):
+    """Add feature columns to the event hits data frame."""
     df = df.copy()
     if filter is True:
         df = df.loc[ (df.x>0) & (df.y>0) & (df.z>0) ]
-        #df = df.loc[ (df.x>0) & (df.y>0) ]
         
     df = df.assign(r   = np.sqrt( df.x**2 + df.y**2))
     df = df.assign(a   = np.arctan2(df.y, df.x))
@@ -277,6 +259,7 @@ def generate_df(df, filter=True):
     return df
 
 def load_one_event_data(event_id, path=TRAIN_DATA):
+    """Load event data from disk."""
     # Only hits and truth data are currently used. May need to merge
     # with the particles or cells data if you want to use those as features.
     #particles = pd.read_csv(os.path.join(path, 'event%s-particles.csv'%event_id))
@@ -292,9 +275,10 @@ def load_one_event_data(event_id, path=TRAIN_DATA):
     df = truth
     return (df)
 
-#TODO x,y,z<0
+
 def generate_train_batch(df):
-    df = generate_df(df)
+    """Generate training x and y values for a single event."""
+    df = add_features_to_df(df)
 
     a,r,z,z1 = df[['a', 'r', 'z', 'z1' ]].values.astype(np.float32).T
     p = df['particle_id'].values.astype(np.int64)
@@ -310,8 +294,7 @@ def generate_train_batch(df):
     for particle_id in particle_ids:
         if particle_id==0: continue
         t = np.where(p==particle_id)[0]
-        #t = t[np.argsort(r[t])]
-        # May need to sort by abs_z?
+        # May need to sort by abs_z? or sort based on r?
         t = t[np.argsort(z[t])]
 
         # For simplicity for now, only train tracks >= 10 hits,
@@ -330,11 +313,8 @@ def generate_train_batch(df):
 
 
 def batch_generator(invals, truth, batch_size):
-    # Create empty arrays to contain batch of features and labels#
-    #batch_features = np.zeros((batch_size, invals.shape[1], invals.shape[2]))
-    #batch_labels =  np.zeros((batch_size, truth.shape[1], truth.shape[2]))
+    """Return a single batch of training data."""
     index = 0
-   
     while True:
         batch_features = invals[batch_size*index:batch_size*(index+1),:,:]
         batch_labels = truth[batch_size*index:batch_size*(index+1),:,:]
@@ -345,6 +325,7 @@ def batch_generator(invals, truth, batch_size):
         yield batch_features, batch_labels
 
 def generate_multiple_event_data(skip=0, nevents=10):
+    """Generate training x and y data for multiple events"""
     start = 1000
     invals = None
     truth = None
@@ -368,6 +349,9 @@ def generate_multiple_event_data(skip=0, nevents=10):
 
 
 def load_or_generate_multiple_event_data(skip=0, nevents=10):
+    """Generating training data for events takes a very long time.
+    Use pre-generated numpy data for the specified events if possible (this is very fast).
+    Otherwise, generate the training data, and save it to disk for next time."""
     print("Generating or loading x_train, y_train with skip {:04} and nevents {:04}".format(skip, nevents))
     x_train_file = os.path.join(TRAIN_NUMPY, "event_skip_{:04}_nevents_{:04}".format(skip, nevents)+'_x_train.npy')
     y_train_file = os.path.join(TRAIN_NUMPY, "event_skip_{:04}_nevents_{:04}".format(skip, nevents)+'_y_train.npy')
@@ -389,24 +373,29 @@ def load_or_generate_multiple_event_data(skip=0, nevents=10):
 # In[9]:
 
 
-def generate_train_batch_for_fitting(df):
-    df = generate_df(df)
+def generate_test_data_for_fitting(df):
+    """Generate test data for inference and fitting."""
+    df = add_features_to_df(df, False)
+    # Generate any columns needed for fitting.
     df['track_id'] = pd.Series([0] * len(df.index), index=df.index)
     df['predict_done'] = pd.Series([0] * len(df.index), index=df.index)
     df['actual_particle_id'] = pd.Series([0] * len(df.index), index=df.index)
 
-    a, r, z, z1, hit, pid, pdone, pactual = df[['a', 'r', 'z', 'z1', 'hit_id', 'particle_id', 'predict_done', 'actual_particle_id' ]].values.astype(np.float32).T
-    p = df['particle_id'].values.astype(np.int64)
+    dfp = df.loc[ (df.x>0) & (df.y>0) & (df.z>0) ]
+    a, r, z, z1, hit, pid, pdone, pactual = dfp[['a', 'r', 'z', 'z1', 'hit_id', 'particle_id', 'predict_done', 'actual_particle_id' ]].values.astype(np.float32).T
+    p = dfp['particle_id'].values.astype(np.int64)
     
-    particle_ids = list(df.particle_id.unique())
+    particle_ids = list(dfp.particle_id.unique())
     num_particle_ids = len(particle_ids)
 
     incols  = np.column_stack((a,r/1000, z/3000,z1/3, hit, pid, pdone, pactual))    
     tracks = []
-    
+
+    #positive_ix = np.where((df.x > 0) & (df.y > 0) & (df.z > 0))[0]
     for particle_id in particle_ids:
         if particle_id==0: continue
         t = np.where(p==particle_id)[0]
+        #t = np.intersect1d(t, positive_ix, assume_unique=True)
         t = t[np.argsort(z[t])]
 
         if len(t)<10: continue
@@ -416,6 +405,7 @@ def generate_train_batch_for_fitting(df):
 
     tracks = np.array(tracks)
     incols = np.copy(tracks[:,:,:])
+    # Clear hits 5-10, these will be predicted by the LSTM
     incols[:,5:,0:4] = 0
    
     truth  = tracks[:,:,:]
@@ -430,35 +420,33 @@ def fit_predictions(hits, preds, verbose=False):
     """
     Assign predicted LSTM hits to nearest un-assigned hit.
     """
-    def do_one_assignment_round(hits, preds):
+    def do_one_assignment_round(hits, preds, orig_preds):
         labels = hits.track_id.values
         distances = np.zeros((len(labels)), dtype=float)
         predi = np.zeros((len(labels)), dtype=int)
         predj = np.zeros((len(labels)), dtype=int)
         #count_free_hits = len(np.where(labels == 0)[0])
-        #print('free hits available this round: ' + str(count_free_hits))
-
-        # Backup current predictions to restore a/rn/zn/zrn values if
-        # another hit ends up being closer
-        orig_preds = np.copy(preds)
+        #print("free hits available this round: {}".format(count_free_hits))
 
         # Note - df is the list of all available hits not yet assigned to
         # a track. We need to fit our predictions to these hits.
         df = hits.loc[(hits.track_id == 0)]
         hit_ids = df.hit_id.values
 
-        # We have a, r/1000, z/3000, and (z/r)/3
+        # We have a (phi), r/1000, z/3000, and (z/r)/3.
+        # Manhattan distance seems to provide better fitting accuracy than
+        # euclidean - about a 0.7% improvement. It's unclear why manhattan
+        # would perform noticeably better than euclidean.
         a, rn, zn, zrn, pid = df[['a', 'rn', 'zn', 'zrn', 'particle_id']].values.T
-        tree = KDTree(np.column_stack([a, rn, zn, zrn]), metric='euclidean')
+        tree = KDTree(np.column_stack([a, rn, zn, zrn]), metric='manhattan')
 
         num_left_to_assign = 0
         # For each predicted track
         for i in range(preds.shape[0]):
             # For each predicted hit in that track
             truth_particle = preds[i,0,5]
-            for j in range(preds.shape[1]):
-                # hits 0-4 are the input seeds, already assigned
-                if j < 5: continue
+            # hits 0-4 are the input seeds, already assigned
+            for j in range(5, 10):
                 # If we've already assigned this prediction to a hit in
                 # a previous round, skip it.
                 if preds[i,j,6] != 0: continue
@@ -476,14 +464,12 @@ def fit_predictions(hits, preds, verbose=False):
                 hit_id = hit_ids[nidx0]
                 gidx0 = hit_id - 1
 
-                #print('end point 0: ' + str(gzr0))
-                #print('free idx: ' + str(nidx0))
-                #print('nearest point: ' + str(zr[nidx0]))
-                #print('nearest distance: ' + str(nd0))
-                #print('global index: ' + str(gidx0))
-                #print('global zr: ' + str(gzr[gidx0]))
+                #print("Nearest hit id is: {}, distance: {}".format(hit_id, nd0))
 
-                hits_index = np.where(hits['hit_id'] == hit_id)[0]
+                # If the nearest hit is not assigned, or if this predicted hit is closer
+                # than any other predicted hits, assign this hit to us. Record our distance
+                # to the hit, in case later predicted hits in this batch end up being closer.
+                hits_index = gidx0
                 if (labels[hits_index] == 0) or (nd0 < distances[hits_index]):
                     if (labels[hits_index] != 0):
                         # We stole someone else's prediction since we are closer to
@@ -510,20 +496,22 @@ def fit_predictions(hits, preds, verbose=False):
                     distances[hits_index] = nd0
                     predi[hits_index] = i
                     predj[hits_index] = j
-                elif distances[hits_index] > 0:
-                    num_left_to_assign = num_left_to_assign + 1
                 else:
                     num_left_to_assign = num_left_to_assign + 1
 
+        # Update the data frame with the new track data from this round of fitting.
         hits['track_id'] = labels.tolist()
         return (hits, preds, num_left_to_assign)
 
+    # Main function starts here.
+    # Add any missing fitting features to the data frame. Most are already
+    # set up when we loaded the test data, mainly just need to normalize.
     #hits['z_abs'] = hits.z.abs()
-    hits['r'] = np.sqrt(hits.x**2+hits.y**2)
+    #hits['r'] = np.sqrt(hits.x**2+hits.y**2)
     hits['rn'] = hits['r'] / 1000
-    hits['a'] = np.arctan2(hits.y.values, hits.x.values)
-    hits['zr'] = hits['z'] / hits['r']
-    hits['zrn'] = hits['zr'] / 3
+    #hits['a'] = np.arctan2(hits.y.values, hits.x.values)
+    #hits['zr'] = hits['z'] / hits['r']
+    hits['zrn'] = hits['z1'] / 3
     hits['zn'] = hits['z'] / 3000
 
 
@@ -534,15 +522,18 @@ def fit_predictions(hits, preds, verbose=False):
         truth_particle_id = preds[i,0,5]
         # First 5 hits are known, update track_id with ground truth particle ID
         for j in range(5):
-            hit_id = preds[i,j,4]
-            hits_index = np.where(hits['hit_id'] == hit_id)[0]
+            hit_id = int(preds[i,j,4])
+            hits_index = hit_id - 1
             labels[hits_index] = truth_particle_id
     hits['track_id'] = labels.tolist()
 
     num_left_to_assign = preds.shape[0]*5 # 5 hits to assign per predicted track
     num_loops = 0
+    # Backup current predictions to restore a/rn/zn/zrn values if
+    # another hit ends up being closer
+    orig_preds = np.copy(preds)
     while (num_left_to_assign > 0) and (num_loops < 10):
-        (hits, preds, num_left_to_assign) = do_one_assignment_round(hits, preds)
+        (hits, preds, num_left_to_assign) = do_one_assignment_round(hits, preds, orig_preds)
         num_loops = num_loops + 1
         if verbose:
             print("Num left to assign after round {}: {}".format(num_loops, num_left_to_assign))
@@ -550,44 +541,39 @@ def fit_predictions(hits, preds, verbose=False):
     return (hits, preds)
 
 
-# In[11]:
+# In[12]:
 
 
 def calculate_fit_accuracy(preds, verbose=False):
+    """Calculate our inference+fitting accuracy."""
     total_correct = 0
     total_incorrect = 0
     tracks_right = np.zeros((6), dtype=int)
-    perfect_tracks = []
     seeds_right = np.zeros((6), dtype=int)
-    perfect_seeds = []
     total_seed_correct = 0
     total_seed_incorrect = 0
     for i in range(preds.shape[0]):
         track_right = 0
         seed_right = 0
+        # Calculate seed accuracy
         for j in range(5):
-            #print('truth: ' + str(preds[i][j][5]))
-            #print('fit:   ' + str(preds[i][j][7]))
+            #print("Truth: {}, fit: {}".format(preds[i,j,5], preds[i,j,7]))
             if preds[i][j][5] != preds[i][j][7]:
                 total_seed_incorrect = total_seed_incorrect + 1
             else:
                 total_seed_correct = total_seed_correct + 1
                 seed_right = seed_right + 1
         seeds_right[seed_right] = seeds_right[seed_right] + 1
-        if seed_right == 5:
-            perfect_seeds.append(i)
 
+        # Calculate inference+fit accuracy
         for j in range(5, 10):
-            #print('truth: ' + str(preds[i][j][5]))
-            #print('fit:   ' + str(preds[i][j][7]))
+            #print("Truth: {}, fit: {}".format(preds[i,j,5], preds[i,j,7]))
             if preds[i][j][5] != preds[i][j][7]:
                 total_incorrect = total_incorrect + 1
             else:
                 total_correct = total_correct + 1
                 track_right = track_right + 1
         tracks_right[track_right] = tracks_right[track_right] + 1
-        if track_right == 5:
-            perfect_tracks.append(i)
 
     accuracy = total_correct / (total_correct + total_incorrect)
     seed_accuracy = total_seed_correct / (total_seed_correct + total_seed_incorrect)
@@ -604,13 +590,15 @@ def calculate_fit_accuracy(preds, verbose=False):
         print("Total Seed per track (0-5): {}".format(seeds_right))
 
     return accuracy, tracks_right, seed_accuracy, seeds_right
-    #print(perfect_tracks)
 
 
-# In[12]:
+# In[13]:
 
 
 def ensemble_predictions(model_names, dbscan=False, first_event=9998, num_events=1, verbose=False):
+    """Perform inference (using ensemble of provided models) and fitting for the specified events."""
+
+    # Load all models we will use for inference+ensembling
     start = time.time()
     gpu_models = []
     for i in range(len(model_names)):
@@ -626,19 +614,25 @@ def ensemble_predictions(model_names, dbscan=False, first_event=9998, num_events
     inference_times = np.zeros((num_models), dtype=float)
     total_fit_time = 0.0
     total_tracks = 0
+
+    test_x = None
+    test_y = None
     
     for ev in range(num_events):
+
+        # Generate test data for this event for inference+fitting
         start = time.time()
         event_id = first_event + ev
         fit_df = load_one_event_data("00000{}".format(event_id))
         if dbscan:
             fit_df, pred_x, pred_truth = generate_dbscan_test_data(event_id, fit_df)
         else:
-            fit_df, pred_x, pred_truth = generate_train_batch_for_fitting(fit_df)
+            fit_df, pred_x, pred_truth = generate_test_data_for_fitting(fit_df)
         num_tracks = pred_truth.shape[0]
         total_tracks = total_tracks + num_tracks
         elapsed = find_elapsed_time(start, "Event {} with {} tracks setup time: ".format(event_id, num_tracks))
 
+        # Accumulate raw predictions from each model
         preds = np.copy(pred_x)
         preds[:,5:,0:4] = 0
         elapsed = 0
@@ -656,15 +650,20 @@ def ensemble_predictions(model_names, dbscan=False, first_event=9998, num_events
 
         print("Event {} inference time: {:f} (per track: {:f})".format(event_id, elapsed, elapsed/num_tracks))
 
+        # Average accumulated predictions
+        # Note - the accumulation above could be enhanced with weights if desired, i.e. to
+        # give a higher weight to a more accurate model, while still allowing less accurate
+        # models to impact the final result slightly
         preds[:,5:,0:4] = preds[:,5:,0:4] / num_models
 
         # Set up predictions for kNN fitting - we only fit predictions 5-10.
         start = time.time()
-        (fit_df, preds) = fit_predictions(fit_df, preds)
+        (fit_df, preds) = fit_predictions2(fit_df, preds)
         elapsed = find_elapsed_time(start, "x", display_time=False)
         total_fit_time = total_fit_time + elapsed
         print("Event {} fit time: {:f} (per track: {:f})".format(event_id, elapsed, elapsed/num_tracks))
 
+        # Calculate our inference+fitting accuracy
         (accuracy, dist, seed_accuracy, seed_dist) = calculate_fit_accuracy(preds, verbose=verbose)
         print("Event {} accuracy: {:f}, distribution (0-5 correct): {}".format(event_id, accuracy, dist))
         print("Event {} seed accuracy: {:f}, distribution (0-5 correct): {}".format(event_id, seed_accuracy, seed_dist))
@@ -672,9 +671,11 @@ def ensemble_predictions(model_names, dbscan=False, first_event=9998, num_events
         avg_seed_accuracy = avg_seed_accuracy + seed_accuracy
         track_dists = track_dists + dist
         seed_dists = seed_dists + seed_dist
-    
+
+        test_x = np.copy(preds)
+        test_y = np.copy(pred_truth)
         if VISUALIZE_RESULTS:
-            draw_prediction(preds_truth[:,:,0:4], preds[:,:,0:4], 270, 280)
+            draw_prediction(pred_truth[:,:,0:4], preds[:,:,0:4], 270, 280)
 
     if num_events > 1:
         avg_accuracy = avg_accuracy / num_events
@@ -694,10 +695,10 @@ def ensemble_predictions(model_names, dbscan=False, first_event=9998, num_events
         print("Average track model inference times: {:f}, {}".format(inference_time_track_avg_sum, inference_time_track_avg))
         print("Total fit time: {:f}, average fit time: {:f}".format(total_fit_time, fit_time_avg))
         
-    return
+    return test_x, test_y
 
 
-# In[13]:
+# In[14]:
 
 
 def find_elapsed_time(start, label, display_time=True):
@@ -708,7 +709,7 @@ def find_elapsed_time(start, label, display_time=True):
     return elapsed
 
 
-# In[14]:
+# In[15]:
 
 
 if TRAIN_MODEL:
@@ -726,6 +727,7 @@ if TRAIN_MODEL:
     val_input, val_truth = load_or_generate_multiple_event_data(skip=train_skip+train_nevents+val_skip, nevents=val_nevents)
     print('Done!')
 
+    # Resume training from an existing model if provided, otherwise create a new model for training.
     if LOAD_MODEL_NAME is not None:
         model, gpu_model = load_existing_model(LOAD_MODEL_NAME)
     else:
@@ -735,6 +737,9 @@ if TRAIN_MODEL:
 
     batch_size = 4096
     num_epoch = 100
+    # The training data is small enough that it can all fit in memory, so a batch generator
+    # is not needed (yet). If training with all data (not just x,y,z > 0), we may need to
+    # use the batch generator.
     #generator = batch_generator(invals, truth, batch_size)
     #val_generator = batch_generator(val_input, val_truth, batch_size)
     # Train the model
@@ -754,16 +759,9 @@ if TRAIN_MODEL:
         draw_train_history(history, metric='mean_squared_error', metric_ylabel='Mean Squared Err', metric_title='Mean Squared Error', draw_val=True);
 
 
-# In[15]:
+# In[18]:
 
 
-#predict_model_names = ['1024-epoch-300-mae.h5', '512-512-200-epoch.h5']#'512-02-512-epoch-100.h5']#, '1024-epoch-200.h5']
-#predict_model_names = ['1024-epoch-400-mae.h5', '1024-epoch-300-mae.h5'] # 84.6% accuracy, 72.6% dbscan
-#predict_model_names = ['1024-epoch-400-mae.h5', '2018-11-18-14-13-59.h5']
-#predict_model_names = ['1024-epoch-300-mae.h5', '1024-epoch-200-mae.h5'] # 85.6% accuracy! 15 step, 79.1% dbscan accuracy
-## NEW DBSCAN: Restrict truth > 10 hits where x,y,z > 0
-## - 452 tracks to predict, 82.7% fit accuracy ([ 10  13  26  62  88 253]), 95.6% seeds ([  0   1   4  20  43 384])
-#predict_model_names = ['1024-epoch-300-mae.h5', '1024-epoch-200-mae.h5']
 #predict_model_names = ['2048-epoch-400-mae.h5', '1024-epoch-400-mae.h5']
 # truth: 646 tracks, 86.0% ([  3  13  27  75 155 373])
 # dbscan: 452 tracks, 82.9% ([  9  11  35  51  90 256]), seeds 95.6% ([  0   1   4  20  43 384])
@@ -782,5 +780,31 @@ if TRAIN_MODEL:
 #predict_model_names = ['1024-512-epoch-256-mae.h5', '2048-epoch-400-mae.h5', '1024-epoch-220-mae.h5']
 # truth: 646 tracks, 86.9% ([  2   9  30  55 178 372])
 # dbscan: 452 tracks, 83.6% ([ 11   6  30  52  98 255]), seeds 95.6% ([  0   1   4  20  43 384])
-ensemble_predictions(predict_model_names, dbscan=True, first_event=9900, num_events=100)
+## manhattan distance: truth:  87.6% ([  2   7  26  56 171 384])
+## manhattan distance: dbscan: 83.9% ([ 11   7  27  52  96 259])
+#predict_model_names = ['1024-512-epoch-256-mae.h5', '2048-epoch-400-mae.h5', '1024-epoch-220-mae.h5', '256-10-512-10-1024-epoch-206-mae.h5']
+(test_x, test_y) = ensemble_predictions(predict_model_names, dbscan=True, first_event=9998, num_events=1)
+### DBScan fit time: 1.647366 (0.003645 per track) (1.622017 after simple improvements)
+### DBScan fit time after removing df ix code: 0.690442 (0.001528 per track)
+
+
+# In[17]:
+
+
+#65-70 is good
+#95-100 is quite good
+#110-115 is good
+#125-130 is quite good
+#140-145 is quite, quite good
+#160-165 is quite, quite good
+#165-170 is quite, quite good
+#175-180 is quite good
+#245-250 are almost perfect predictions (not interesting enough?)
+##255-260 is quite good
+#265-270 is interesting - extremely good, but reversed (straight in xyz, curved in polar)
+#300-305 is quite, quite good
+#310-315 is quite, quite good
+#315-320 is quite, quite good
+if VISUALIZE_RESULTS:
+    draw_prediction(test_y[:,:,0:4], test_x[:,:,0:4], 0, 645)
 
