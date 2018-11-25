@@ -658,7 +658,7 @@ def ensemble_predictions(model_names, dbscan=False, first_event=9998, num_events
 
         # Set up predictions for kNN fitting - we only fit predictions 5-10.
         start = time.time()
-        (fit_df, preds) = fit_predictions2(fit_df, preds)
+        (fit_df, preds) = fit_predictions(fit_df, preds)
         elapsed = find_elapsed_time(start, "x", display_time=False)
         total_fit_time = total_fit_time + elapsed
         print("Event {} fit time: {:f} (per track: {:f})".format(event_id, elapsed, elapsed/num_tracks))
