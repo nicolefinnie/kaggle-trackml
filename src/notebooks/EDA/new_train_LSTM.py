@@ -24,6 +24,7 @@ from keras import layers
 from keras import backend as K
 from keras.layers import Masking
 from keras import optimizers
+from keras.callbacks import EarlyStopping
 
 
 # In[2]:
@@ -39,7 +40,7 @@ GPU = 0 # 0 is default (usually uses 1 GPU if available, if > 1 then configures 
 LOAD_MODEL_NAME = None
 TRAIN_MODEL = False # If TRAIN_MODEL is True, model is automatically saved after training
 VISUALIZE_RESULTS = False
-predict_model_names = ['1024-512-epoch-256-mae.h5', '2048-epoch-400-mae.h5', '1024-epoch-220-mae.h5']
+predict_model_names = ['256-512-1024-epoch-366-mae.h5', '1024-512-epoch-256-mae.h5', '2048-epoch-400-mae.h5', '1024-epoch-220-mae.h5']
 
 
 # In[3]:
@@ -391,11 +392,9 @@ def generate_test_data_for_fitting(df):
     incols  = np.column_stack((a,r/1000, z/3000,z1/3, hit, pid, pdone, pactual))    
     tracks = []
 
-    #positive_ix = np.where((df.x > 0) & (df.y > 0) & (df.z > 0))[0]
     for particle_id in particle_ids:
         if particle_id==0: continue
         t = np.where(p==particle_id)[0]
-        #t = np.intersect1d(t, positive_ix, assume_unique=True)
         t = t[np.argsort(z[t])]
 
         if len(t)<10: continue
@@ -541,7 +540,7 @@ def fit_predictions(hits, preds, verbose=False):
     return (hits, preds)
 
 
-# In[12]:
+# In[11]:
 
 
 def calculate_fit_accuracy(preds, verbose=False):
@@ -592,10 +591,10 @@ def calculate_fit_accuracy(preds, verbose=False):
     return accuracy, tracks_right, seed_accuracy, seeds_right
 
 
-# In[13]:
+# In[12]:
 
 
-def ensemble_predictions(model_names, dbscan=False, first_event=9998, num_events=1, verbose=False):
+def ensemble_predictions(model_names, dbscan=False, first_event=9998, num_events=1, batch_size=256, verbose=False):
     """Perform inference (using ensemble of provided models) and fitting for the specified events."""
 
     # Load all models we will use for inference+ensembling
@@ -638,7 +637,8 @@ def ensemble_predictions(model_names, dbscan=False, first_event=9998, num_events
         elapsed = 0
         for i in range(num_models):
             start = time.time()
-            pred_raw = gpu_models[i].predict(pred_x[:,:,0:4])
+            inference_batch_size = min(batch_size, pred_x.shape[0])
+            pred_raw = gpu_models[i].predict(pred_x[:,:,0:4], batch_size=inference_batch_size)
             this_elapsed = find_elapsed_time(start, "predict time: ", display_time=verbose)
             preds[:,5:,0:4] = preds[:,5:,0:4] + pred_raw[:,5:,0:4]
             elapsed = elapsed + this_elapsed
@@ -698,6 +698,66 @@ def ensemble_predictions(model_names, dbscan=False, first_event=9998, num_events
     return test_x, test_y
 
 
+# In[13]:
+
+
+def batched_inference_times(model_names, dbscan=False, first_event=9998, num_events=1, batch_size=1024, verbose=False):
+    """Test time needed to perform batched inference."""
+
+    # Load all models we will use for inference+ensembling
+    start = time.time()
+    gpu_models = []
+    for i in range(len(model_names)):
+        _, gpu_modeli = load_existing_model(model_names[i])
+        gpu_models.append(gpu_modeli)
+    num_models = len(gpu_models)
+    elapsed = find_elapsed_time(start, "Model load time ({} models): ".format(num_models))
+
+    batch_x = None
+    batch_y = None
+    batch_inference_times = np.zeros((num_models), dtype=float)
+
+    for ev in range(num_events):
+        # Generate test data for this event for inference+fitting
+        start = time.time()
+        event_id = first_event + ev
+        fit_df = load_one_event_data("00000{}".format(event_id))
+        if dbscan:
+            fit_df, pred_x, pred_truth = generate_dbscan_test_data(event_id, fit_df)
+        else:
+            fit_df, pred_x, pred_truth = generate_test_data_for_fitting(fit_df)
+        num_tracks = pred_truth.shape[0]
+        elapsed = find_elapsed_time(start, "Event {} with {} tracks setup time: ".format(event_id, num_tracks))
+
+        # Note - this is only for performance timings!
+        # We want to see how long it takes to perform about 10000 predictions.
+        # We need the df for fitting and calculating accuracy though, and don't
+        # want to batch those up too, since eventually we would have 10000 predictions
+        # or so per-event.
+        if batch_x is None:
+            batch_x = np.copy(pred_x[:,:,0:4])
+        else:
+            batch_x = np.concatenate((batch_x, np.copy(pred_x[:,:,0:4])))
+
+
+    if (batch_x is not None):
+        for i in range(num_models):
+            start = time.time()
+            pred_raw = gpu_models[i].predict(batch_x, batch_size=batch_size)
+            batch_time = find_elapsed_time(start, "batch predict time: ", display_time=verbose)
+            batch_inference_times[i] = batch_inference_times[i] + batch_time
+
+    num_batches = math.ceil(float(batch_x.shape[0]) / float(batch_size))
+    total_batch_inference_time = np.sum(batch_inference_times)
+    batch_inference_time_avg = batch_inference_times / num_batches
+    batch_inference_time_avg_sum = np.sum(batch_inference_time_avg)
+    print("Total inference samples: {}, batch_size: {}, num_batches: {}".format(batch_x.shape[0], batch_size, num_batches))
+    print("Total batch inference time: {:f}, per-model: {}".format(total_batch_inference_time, batch_inference_times))
+    print("Average batch inference time: {:f}, {}".format(batch_inference_time_avg_sum, batch_inference_time_avg))
+
+    return
+
+
 # In[14]:
 
 
@@ -735,8 +795,9 @@ if TRAIN_MODEL:
 
     model.summary()
 
-    batch_size = 4096
-    num_epoch = 100
+    batch_size = 16384
+    num_epoch = 500
+    earlystopper = EarlyStopping(patience=20, verbose=0)
     # The training data is small enough that it can all fit in memory, so a batch generator
     # is not needed (yet). If training with all data (not just x,y,z > 0), we may need to
     # use the batch generator.
@@ -744,10 +805,11 @@ if TRAIN_MODEL:
     #val_generator = batch_generator(val_input, val_truth, batch_size)
     # Train the model
     #history = gpu_model.fit_generator(generator, validation_data=val_generator,validation_steps=int(val_input.shape[0]/batch_size),
-    #                              steps_per_epoch=int(invals.shape[0]/batch_size), epochs=num_epoch, 
+    #                              steps_per_epoch=int(invals.shape[0]/batch_size), epochs=num_epoch,
+    #                              callbacks=[earlystopper],
     #                              shuffle = False)
     history = gpu_model.fit(x=invals, y=truth, validation_data=(val_input, val_truth), batch_size=batch_size,
-                            epochs=num_epoch, shuffle=False)
+                            epochs=num_epoch, callbacks=[earlystopper], shuffle=False)
 
     current_datetime_str = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     save_model_name = current_datetime_str + '.h5'
@@ -759,7 +821,7 @@ if TRAIN_MODEL:
         draw_train_history(history, metric='mean_squared_error', metric_ylabel='Mean Squared Err', metric_title='Mean Squared Error', draw_val=True);
 
 
-# In[18]:
+# In[16]:
 
 
 #predict_model_names = ['2048-epoch-400-mae.h5', '1024-epoch-400-mae.h5']
@@ -782,10 +844,12 @@ if TRAIN_MODEL:
 # dbscan: 452 tracks, 83.6% ([ 11   6  30  52  98 255]), seeds 95.6% ([  0   1   4  20  43 384])
 ## manhattan distance: truth:  87.6% ([  2   7  26  56 171 384])
 ## manhattan distance: dbscan: 83.9% ([ 11   7  27  52  96 259])
-#predict_model_names = ['1024-512-epoch-256-mae.h5', '2048-epoch-400-mae.h5', '1024-epoch-220-mae.h5', '256-10-512-10-1024-epoch-206-mae.h5']
-(test_x, test_y) = ensemble_predictions(predict_model_names, dbscan=True, first_event=9998, num_events=1)
-### DBScan fit time: 1.647366 (0.003645 per track) (1.622017 after simple improvements)
-### DBScan fit time after removing df ix code: 0.690442 (0.001528 per track)
+#predict_model_names = ['1024-512-epoch-256-mae.h5', '2048-epoch-400-mae.h5', '1024-epoch-220-mae.h5', '256-512-1024-epoch-366-mae.h5']
+#['1024-512-epoch-256-mae.h5', '2048-epoch-400-mae.h5', '1024-epoch-220-mae.h5', 
+#predict_model_names = ['256-512-1024-epoch-366-mae.h5', '1024-epoch-220-mae.h5', '2048-epoch-400-mae.h5']
+# 87.1% (+1024), 87.6% (+1024, +2048), 88.2% (+1024, +2048, +Bi1024-512)
+(test_x, test_y) = ensemble_predictions(predict_model_names, dbscan=True, first_event=9900, num_events=100, batch_size=1024)
+#batched_inference_times(predict_model_names, dbscan=True, first_event=9900, num_events=100, batch_size=512)
 
 
 # In[17]:
