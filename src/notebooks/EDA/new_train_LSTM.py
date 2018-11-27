@@ -412,7 +412,7 @@ def generate_test_data_for_fitting(df):
     return (df, incols, truth)
 
 
-# In[10]:
+# In[24]:
 
 
 def fit_predictions(hits, preds, verbose=False):
@@ -421,16 +421,16 @@ def fit_predictions(hits, preds, verbose=False):
     """
     def do_one_assignment_round(hits, preds, orig_preds):
         labels = hits.track_id.values
-        distances = np.zeros((len(labels)), dtype=float)
+        taken = np.zeros((len(labels)), dtype=float)
         predi = np.zeros((len(labels)), dtype=int)
         predj = np.zeros((len(labels)), dtype=int)
-        #count_free_hits = len(np.where(labels == 0)[0])
-        #print("free hits available this round: {}".format(count_free_hits))
 
         # Note - df is the list of all available hits not yet assigned to
         # a track. We need to fit our predictions to these hits.
         df = hits.loc[(hits.track_id == 0)]
         hit_ids = df.hit_id.values
+        #count_free_hits = len(hit_ids)
+        #print("free hits available this round: {}".format(count_free_hits))
 
         # We have a (phi), r/1000, z/3000, and (z/r)/3.
         # Manhattan distance seems to provide better fitting accuracy than
@@ -439,64 +439,94 @@ def fit_predictions(hits, preds, verbose=False):
         a, rn, zn, zrn, pid = df[['a', 'rn', 'zn', 'zrn', 'particle_id']].values.T
         tree = KDTree(np.column_stack([a, rn, zn, zrn]), metric='manhattan')
 
-        num_left_to_assign = 0
-        # For each predicted track
-        for i in range(preds.shape[0]):
-            # For each predicted hit in that track
-            truth_particle = preds[i,0,5]
-            # hits 0-4 are the input seeds, already assigned
-            for j in range(5, 10):
-                # If we've already assigned this prediction to a hit in
-                # a previous round, skip it.
-                if preds[i,j,6] != 0: continue
+        iteration = 0
+        num_left_to_assign = 1
+        # Building the kNN tree is expensive, whereas finding the nearest neighbours once
+        # the tree is built is very cheap. So, build the tree once, and run through several
+        # iterations of assigning hits to the nearest neighbour, where at each interval we have
+        # fewer available hits so we increase the number of potential neighbours to look for.
+        while (num_left_to_assign > 0) and (iteration < 10):
+            num_neighbours = 1 + iteration*5
+            iteration = iteration + 1
+            #print("Running loop {} with knn {}".format(iteration, num_neighbours))
+            num_left_to_assign = 0
+            distances = np.zeros((len(labels)), dtype=float)
 
-                # Find nearest neighbour to LSTM-predicted hits
-                ga = preds[i,j,0]
-                grn = preds[i,j,1]
-                gzn = preds[i,j,2]
-                gzrn = preds[i,j,3]
-                (nearest_dist, nearest_idx) = tree.query([[ga, grn, gzn, gzrn]], k=1)
-                nearest_dist = np.concatenate(nearest_dist)
-                nd0 = nearest_dist[0]
-                nearest_idx = np.concatenate(nearest_idx)
-                nidx0 = nearest_idx[0]
-                hit_id = hit_ids[nidx0]
-                gidx0 = hit_id - 1
+            # For each predicted track
+            for i in range(preds.shape[0]):
+                # For each predicted hit in that track
+                # Note: We could look at predicted hits 0..4 as well, if they do not map to
+                # the same hit ID as was input to the LSTM, they could represent a valid
+                # hit in the same track, particularly for the case where the ground truth
+                # has 2 hits extremely close to each other.
+                truth_particle = preds[i,0,5]
+                # hits 0-4 are the input seeds, already assigned
+                for j in range(5, 10):
+                    # If we've already assigned this prediction to a hit in
+                    # a previous round, skip it.
+                    if preds[i,j,6] != 0: continue
 
-                #print("Nearest hit id is: {}, distance: {}".format(hit_id, nd0))
+                    # Find nearest neighbour to LSTM-predicted hits
+                    ga = preds[i,j,0]
+                    grn = preds[i,j,1]
+                    gzn = preds[i,j,2]
+                    gzrn = preds[i,j,3]
+                    (nearest_dist, nearest_idx) = tree.query([[ga, grn, gzn, gzrn]], k=num_neighbours)
+                    nearest_dist = np.concatenate(nearest_dist)
+                    #nd0 = nearest_dist[0]
+                    nearest_idx = np.concatenate(nearest_idx)
+                    #nidx0 = nearest_idx[0]
+                    #hit_id = hit_ids[nidx0]
+                    #gidx0 = hit_id - 1
+                    #print("Nearest hit id is: {}, distance: {}".format(hit_id, nd0))
+                    #hits_index = gidx0
+                    # To avoid rebuilding the kNN tree, use multiple iterations, and find more
+                    # neighbours each time. At each iteration we only want to look at hits not
+                    # yet assigned, so skip ones that were assigned from previous iterations.
+                    iix = 0
+                    while (iix == 0) or ((labels[hits_index] != 0) and (taken[hits_index] != 0.0) and (iix < num_neighbours)):
+                        nidx0 = nearest_idx[iix]
+                        hit_id = hit_ids[nidx0]
+                        gidx0 = hit_id - 1
+                        hits_index = gidx0
+                        nd0 = nearest_dist[iix]
+                        iix = iix + 1
 
-                # If the nearest hit is not assigned, or if this predicted hit is closer
-                # than any other predicted hits, assign this hit to us. Record our distance
-                # to the hit, in case later predicted hits in this batch end up being closer.
-                hits_index = gidx0
-                if (labels[hits_index] == 0) or (nd0 < distances[hits_index]):
-                    if (labels[hits_index] != 0):
-                        # We stole someone else's prediction since we are closer to
-                        # that hit, so clear the 'prediction_done' flag
-                        far_i = predi[hits_index]
-                        far_j = predj[hits_index]
-                        preds[far_i,far_j,:] = orig_preds[far_i,far_j,:]
+                    # If the nearest hit is not assigned, or if this predicted hit is closer
+                    # than any other predicted hits, assign this hit to us. Record our distance
+                    # to the hit, in case later predicted hits in this batch end up being closer.
+                    if ((iteration == 1) or (iix < num_neighbours)) and ((labels[hits_index] == 0) or (nd0 < distances[hits_index])):
+                        if (labels[hits_index] != 0):
+                            # We stole someone else's prediction since we are closer to
+                            # that hit, so clear the 'prediction_done' flag
+                            far_i = predi[hits_index]
+                            far_j = predj[hits_index]
+                            preds[far_i,far_j,:] = orig_preds[far_i,far_j,:]
+                            num_left_to_assign = num_left_to_assign + 1
+                        # Tentatively assign this hit
+                        preds[i,j,6] = 1
+                        # And record what the actual particle/track ID was
+                        preds[i,j,7] = pid[nidx0]
+                        # And remember the fitted a/rn/zn/zrn values so we can visualize
+                        preds[i,j,0] = a[nidx0]
+                        preds[i,j,1] = rn[nidx0]
+                        preds[i,j,2] = zn[nidx0]
+                        preds[i,j,3] = zrn[nidx0]
+
+                        # And record our track and the distance between the projected hit
+                        # and the actual hit. This distance is used in case a different
+                        # projected hit has this same target as its nearest neighbour.
+                        # The target hit will be assigned to the closest one.
+                        labels[hits_index] = truth_particle
+                        distances[hits_index] = nd0
+                        predi[hits_index] = i
+                        predj[hits_index] = j
+                    else:
                         num_left_to_assign = num_left_to_assign + 1
-                    # Tentatively assign this hit
-                    preds[i,j,6] = 1
-                    # And record what the actual particle/track ID was
-                    preds[i,j,7] = pid[nidx0]
-                    # And remember the fitted a/rn/zn/zrn values so we can visualize
-                    preds[i,j,0] = a[nidx0]
-                    preds[i,j,1] = rn[nidx0]
-                    preds[i,j,2] = zn[nidx0]
-                    preds[i,j,3] = zrn[nidx0]
 
-                    # And record our track and the distance between the projected hit
-                    # and the actual hit. This distance is used in case a different
-                    # projected hit has this same target as its nearest neighbour.
-                    # The target hit will be assigned to the closest one.
-                    labels[hits_index] = truth_particle
-                    distances[hits_index] = nd0
-                    predi[hits_index] = i
-                    predj[hits_index] = j
-                else:
-                    num_left_to_assign = num_left_to_assign + 1
+            # Update the list of all hits that were assigned the past round.
+            taken = taken + distances
+
 
         # Update the data frame with the new track data from this round of fitting.
         hits['track_id'] = labels.tolist()
@@ -821,7 +851,7 @@ if TRAIN_MODEL:
         draw_train_history(history, metric='mean_squared_error', metric_ylabel='Mean Squared Err', metric_title='Mean Squared Error', draw_val=True);
 
 
-# In[16]:
+# In[25]:
 
 
 #predict_model_names = ['2048-epoch-400-mae.h5', '1024-epoch-400-mae.h5']
@@ -848,6 +878,7 @@ if TRAIN_MODEL:
 #['1024-512-epoch-256-mae.h5', '2048-epoch-400-mae.h5', '1024-epoch-220-mae.h5', 
 #predict_model_names = ['256-512-1024-epoch-366-mae.h5', '1024-epoch-220-mae.h5', '2048-epoch-400-mae.h5']
 # 87.1% (+1024), 87.6% (+1024, +2048), 88.2% (+1024, +2048, +Bi1024-512)
+#predict_model_names = ['256-512-1024-epoch-366-mae.h5']
 (test_x, test_y) = ensemble_predictions(predict_model_names, dbscan=True, first_event=9900, num_events=100, batch_size=1024)
 #batched_inference_times(predict_model_names, dbscan=True, first_event=9900, num_events=100, batch_size=512)
 
